@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - PickleballMonitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { court: { 50:'#f0fdf4',100:'#dcfce7',200:'#bbf7d0',300:'#86efac',400:'#4ade80',500:'#22c55e',600:'#16a34a',700:'#15803d',800:'#166534',900:'#14532d' } } } }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .fade-in { animation: fadeIn 0.6s ease-out; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        .shake { animation: shake 0.4s ease; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+        .bg-pattern {
+            background-color: #0f172a;
+            background-image:
+                radial-gradient(circle at 25% 25%, rgba(34,197,94,0.08) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(34,197,94,0.06) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(34,197,94,0.03) 0%, transparent 70%);
+        }
+        .input-focus:focus { box-shadow: 0 0 0 3px rgba(34,197,94,0.15); }
+        .card-glow { box-shadow: 0 25px 60px -12px rgba(0,0,0,0.4), 0 0 40px rgba(34,197,94,0.05); }
+
+    </style>
+</head>
+<body class="bg-pattern min-h-screen flex items-center justify-center px-4">
+
+    <div class="w-full max-w-md fade-in">
+        <!-- Logo & Title -->
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-18 h-18 bg-gradient-to-br from-court-500 to-court-700 rounded-2xl mb-5 shadow-lg shadow-court-500/30 ring-4 ring-court-500/10" style="width:4.5rem;height:4.5rem;">
+                <svg class="w-9 h-9 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                    <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+                    <line x1="12" y1="3" x2="12" y2="1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <line x1="12" y1="23" x2="12" y2="21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <line x1="3" y1="12" x2="1" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <line x1="23" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <h1 class="text-2xl font-extrabold text-white tracking-tight">
+                <span class="text-court-400">Pickleball</span>Monitor
+            </h1>
+            <p class="text-slate-400 text-sm mt-1.5">Sistem Monitoring Latihan Pickleball</p>
+            <p class="text-slate-500 text-xs mt-0.5">KONI Kota Surabaya</p>
+        </div>
+
+        <!-- Login Card -->
+        <div id="login-card" class="bg-white/[0.06] backdrop-blur-xl rounded-3xl border border-white/10 p-8 card-glow">
+            <div id="error-msg" class="hidden bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl mb-5 font-medium"></div>
+
+            <!-- Username -->
+            <div class="mb-4">
+                <label class="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wide">Username</label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
+                    </div>
+                    <input type="text" id="username" placeholder="Masukkan username" class="w-full pl-11 pr-4 py-3.5 bg-white/[0.06] border border-white/10 rounded-xl text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-court-500/40 focus:border-court-500/40 transition input-focus" autocomplete="off">
+                </div>
+            </div>
+
+            <!-- Password -->
+            <div class="mb-6">
+                <label class="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wide">Password</label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
+                    </div>
+                    <input type="password" id="password" placeholder="Masukkan password" class="w-full pl-11 pr-4 py-3.5 bg-white/[0.06] border border-white/10 rounded-xl text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-court-500/40 focus:border-court-500/40 transition input-focus">
+                </div>
+            </div>
+
+            <!-- Login Button -->
+            <button onclick="handleLogin()" id="btn-login" class="w-full bg-gradient-to-r from-court-600 to-court-500 hover:from-court-700 hover:to-court-600 text-white font-bold py-3.5 rounded-xl transition-all duration-200 shadow-lg shadow-court-500/25 hover:shadow-court-500/40 flex items-center justify-center gap-2 active:scale-[0.98]">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/></svg>
+                Masuk
+            </button>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center mt-6">
+            <p class="text-slate-600 text-xs">PickleballMonitor &copy; 2026 &mdash; KONI Kota Surabaya</p>
+        </div>
+    </div>
+
+    <script>
+        const USERS = [
+            { username: 'monev',    password: 'koni123',    role: 'admin',   displayName: 'Tim Monev' },
+            { username: 'pelatih',  password: 'pelatih123', role: 'coach',   displayName: 'Coach' },
+            { username: 'atlet',    password: 'atlet123',   role: 'athlete', displayName: 'Atlet' },
+        ];
+
+        (function() {
+            const session = sessionStorage.getItem('pb_session');
+            if (session) {
+                try {
+                    const user = JSON.parse(session);
+                    if (user && user.username) {
+                        window.location.href = 'index.html';
+                    }
+                } catch(e) {
+                    sessionStorage.removeItem('pb_session');
+                }
+            }
+        })();
+
+        function handleLogin() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const errorMsg = document.getElementById('error-msg');
+            const loginCard = document.getElementById('login-card');
+
+            errorMsg.classList.add('hidden');
+
+            if (!username || !password) {
+                showError('Username dan password harus diisi!');
+                return;
+            }
+
+            const user = USERS.find(u => u.username === username && u.password === password);
+
+            if (!user) {
+                showError('Username atau password salah!');
+                loginCard.classList.remove('shake');
+                void loginCard.offsetWidth;
+                loginCard.classList.add('shake');
+                return;
+            }
+
+            const session = {
+                username: user.username,
+                role: user.role,
+                displayName: user.displayName,
+                loginTime: new Date().toISOString()
+            };
+            sessionStorage.setItem('pb_session', JSON.stringify(session));
+
+            window.location.href = 'index.html';
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error-msg');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                handleLogin();
+            }
+        });
+
+        document.getElementById('username').focus();
+    </script>
+</body>
+</html>

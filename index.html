@@ -1,0 +1,1644 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Monitoring Pickleball</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script>
+        // ====================================================================
+        //  AUTH CHECK: Redirect to login if no session
+        // ====================================================================
+        (function() {
+            const session = sessionStorage.getItem('pb_session');
+            if (!session) {
+                window.location.href = 'login.html';
+                return;
+            }
+            try {
+                const user = JSON.parse(session);
+                if (!user || !user.username) {
+                    sessionStorage.removeItem('pb_session');
+                    window.location.href = 'login.html';
+                }
+            } catch(e) {
+                sessionStorage.removeItem('pb_session');
+                window.location.href = 'login.html';
+            }
+        })();
+
+        tailwind.config = {
+            theme: { extend: { colors: { court: { 50:'#f0fdf4',100:'#dcfce7',200:'#bbf7d0',300:'#86efac',400:'#4ade80',500:'#22c55e',600:'#16a34a',700:'#15803d',800:'#166534',900:'#14532d' } } } }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .page { display: none; } .page.active { display: block; }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.12); }
+        .pulse-dot { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+        .fade-in { animation: fadeIn 0.4s ease-in; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        .table-scroll::-webkit-scrollbar { height: 6px; }
+        .table-scroll::-webkit-scrollbar-thumb { background: #86efac; border-radius: 3px; }
+        .chart-panel { background: #1a1f2e; border-radius: 12px; padding: 20px; position: relative; }
+        .chart-panel canvas { width: 100% !important; }
+        .chart-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; margin-right: 14px; }
+        .chart-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .stat-card-dark { background: #1a1f2e; border-radius: 12px; padding: 16px 20px; border-left: 4px solid; }
+        input[type="text"], input[type="date"], input[type="number"], input[type="time"], select, textarea {
+            background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 8px;
+            padding: 8px 12px; font-size: 13px; outline: none; transition: border-color 0.2s; width: 100%;
+        }
+        input:focus, select:focus, textarea:focus { border-color: #22c55e; }
+        input::placeholder, textarea::placeholder { color: #64748b; }
+        input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.6); }
+        .form-section-toggle { cursor: pointer; user-select: none; }
+        .form-section-toggle:hover { background: rgba(34,197,94,0.05); }
+        .form-collapse { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+        .form-collapse.open { max-height: 2000px; }
+        .toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; padding: 12px 20px; border-radius: 10px; color: white; font-size: 13px; font-weight: 500; transform: translateY(80px); opacity: 0; transition: all 0.3s ease; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { background: #16a34a; }
+        .toast.error { background: #ef4444; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } }
+
+        /* Beranda Hero */
+        .beranda-hero {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            position: relative; overflow: hidden;
+        }
+        .beranda-hero::before {
+            content: ''; position: absolute; inset: 0;
+            background: radial-gradient(circle at 30% 40%, rgba(34,197,94,0.08) 0%, transparent 60%),
+                        radial-gradient(circle at 70% 60%, rgba(59,130,246,0.06) 0%, transparent 50%);
+        }
+        .beranda-hero > * { position: relative; z-index: 1; }
+
+        /* Portal Quick Card */
+        .portal-card {
+            background: white; border-radius: 16px; border: 1px solid #f1f5f9;
+            padding: 28px 24px; transition: all 0.3s ease; position: relative; overflow: hidden;
+        }
+        .portal-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+        }
+        .portal-card.atlet::before { background: linear-gradient(90deg, #22c55e, #4ade80); }
+        .portal-card.pelatih::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+        .portal-card.monev::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .portal-card:hover { transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0,0,0,0.08); }
+
+        /* Quick Stat Mini */
+        .quick-stat { background: white; border-radius: 12px; padding: 16px; border: 1px solid #f1f5f9; text-align: center; transition: all 0.2s; }
+        .quick-stat:hover { border-color: #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+
+        /* Welcome badge */
+        .welcome-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 6px 14px; border-radius: 9999px; font-size: 13px; font-weight: 600;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+    <!-- TOAST -->
+    <div id="toast" class="toast"></div>
+
+    <!-- NAVBAR -->
+    <nav class="bg-white shadow-md sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-2">
+                    <div class="w-9 h-9 bg-court-600 rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="3" fill="white"/></svg>
+                    </div>
+                    <span class="text-lg font-bold text-gray-800">Pickleball<span class="text-court-600">Monitor</span></span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right hidden sm:block">
+                        <div id="user-display-name" class="text-xs font-semibold text-gray-600"></div>
+                        <div id="user-display-role" class="text-[10px] text-gray-400 uppercase tracking-wider"></div>
+                    </div>
+                    <button onclick="handleLogout()" title="Logout" class="w-9 h-9 flex items-center justify-center rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-600 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ==================== BERANDA ==================== -->
+    <div id="page-beranda" class="page active">
+        <!-- Hero Section -->
+        <div class="beranda-hero py-14 md:py-20 mb-10">
+            <div class="max-w-6xl mx-auto px-4 text-center fade-in">
+                <div id="welcome-badge-admin" class="welcome-badge bg-court-500/10 text-court-400 border border-court-500/20 mb-5 hidden">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    Sistem Monitoring Aktif
+                </div>
+                <div id="welcome-badge-atlet" class="welcome-badge bg-court-500/10 text-court-400 border border-court-500/20 mb-5 hidden">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
+                    Portal Atlet
+                </div>
+                <div id="welcome-badge-pelatih" class="welcome-badge bg-blue-500/10 text-blue-400 border border-blue-500/20 mb-5 hidden">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342"/></svg>
+                    Portal Pelatih
+                </div>
+                <h1 class="text-3xl md:text-5xl font-black text-white mb-3 leading-tight">
+                    Sistem Monitoring<br><span class="text-court-400">Latihan Pickleball</span>
+                </h1>
+                <p class="text-slate-400 text-base md:text-lg max-w-lg mx-auto">Pantau perkembangan latihan atlet dan evaluasi program pelatihan secara digital.</p>
+            </div>
+        </div>
+
+        <div class="max-w-6xl mx-auto px-4 pb-12">
+            <!-- Monev Card (Admin only) -->
+            <div id="card-monev" class="hidden max-w-3xl mx-auto mb-10">
+                <div class="portal-card monev">
+                    <div class="flex items-center gap-5 mb-6">
+                        <div class="w-14 h-14 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                            <svg class="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z"/></svg>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-800 mb-1">Dashboard Monev</h3>
+                            <p class="text-gray-500 text-sm">Monitoring & evaluasi lapangan oleh Tim Monev KONI Kota Surabaya.</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <button onclick="showMonevMode('form')" class="flex-1 inline-flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-xl font-semibold text-sm transition shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                            Isi Form Monev
+                        </button>
+                        <button onclick="showMonevMode('results')" class="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-amber-700 border-2 border-amber-200 px-6 py-3 rounded-xl font-semibold text-sm transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/></svg>
+                            Lihat Hasil Monev
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Portal Cards -->
+            <div class="flex flex-wrap justify-center gap-6 max-w-4xl mx-auto mb-10">
+                <!-- Portal Atlet -->
+                <div id="card-portal-atlet" class="hidden w-full md:w-[calc(50%-12px)] max-w-md">
+                    <div class="portal-card atlet card-hover h-full">
+                        <div class="flex items-start gap-4 mb-6">
+                            <div class="w-12 h-12 bg-court-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <svg class="w-6 h-6 text-court-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-800">Portal Atlet</h3>
+                                <p class="text-gray-400 text-sm mt-0.5">Jurnal latihan & grafik progress</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <button id="btn-atlet-form" onclick="showAtletMode('form')" class="flex-1 inline-flex items-center justify-center gap-2 bg-court-600 hover:bg-court-700 text-white px-4 py-3 rounded-xl font-semibold text-sm transition shadow-sm">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                                Isi Jurnal
+                            </button>
+                            <button onclick="showAtletMode('results')" class="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-court-700 border-2 border-court-200 px-4 py-3 rounded-xl font-semibold text-sm transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/></svg>
+                                Lihat Hasil
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Portal Pelatih -->
+                <div id="card-portal-pelatih" class="hidden w-full md:w-[calc(50%-12px)] max-w-md">
+                    <div class="portal-card pelatih card-hover h-full">
+                        <div class="flex items-start gap-4 mb-6">
+                            <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342"/></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-800">Portal Pelatih</h3>
+                                <p class="text-gray-400 text-sm mt-0.5">Laporan melatih & evaluasi atlet</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <button id="btn-pelatih-form" onclick="showPelatihMode('form')" class="flex-1 inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl font-semibold text-sm transition shadow-sm">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                                Isi Laporan
+                            </button>
+                            <button onclick="showPelatihMode('results')" class="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-blue-700 border-2 border-blue-200 px-4 py-3 rounded-xl font-semibold text-sm transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/></svg>
+                                Lihat Hasil
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+                <div id="stat-card-atlet" class="hidden quick-stat">
+                    <div id="stat-atlet" class="text-2xl font-bold text-court-600">0</div>
+                    <div class="text-xs text-gray-400 mt-1 font-medium">Entri Atlet</div>
+                </div>
+                <div id="stat-card-pelatih" class="hidden quick-stat">
+                    <div id="stat-pelatih" class="text-2xl font-bold text-blue-600">0</div>
+                    <div class="text-xs text-gray-400 mt-1 font-medium">Laporan Pelatih</div>
+                </div>
+                <div id="stat-card-monev" class="hidden quick-stat">
+                    <div id="stat-monev" class="text-2xl font-bold text-amber-600">0</div>
+                    <div class="text-xs text-gray-400 mt-1 font-medium">Laporan Monev</div>
+                </div>
+                <div class="quick-stat">
+                    <div id="stat-hari" class="text-2xl font-bold text-purple-600">0</div>
+                    <div class="text-xs text-gray-400 mt-1 font-medium">Hari Aktif</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PORTAL ATLET ==================== -->
+    <div id="page-atlet" class="page">
+        <div class="max-w-6xl mx-auto px-4 py-10 fade-in">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 bg-court-600 rounded-lg flex items-center justify-center"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg></div>
+                <div><h2 class="text-2xl font-bold text-gray-800">Portal Atlet</h2><p class="text-gray-400 text-sm">Isi jurnal latihan & lihat grafik progress</p></div>
+            </div>
+
+            <!-- FORM INPUT JURNAL -->
+            <div id="atlet-form-section" class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-6 overflow-hidden">
+                <div onclick="toggleCollapse('form-atlet')" class="form-section-toggle flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 bg-court-100 rounded-lg flex items-center justify-center"><svg class="w-4 h-4 text-court-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></div>
+                        <span class="font-bold text-gray-800">Isi Jurnal Latihan Hari Ini</span>
+                    </div>
+                    <svg id="icon-form-atlet" class="w-5 h-5 text-gray-400 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+                </div>
+                <div id="form-atlet" class="form-collapse px-6 pb-6">
+                    <div class="border-t border-gray-100 pt-5">
+                        <div class="form-grid mb-4">
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Tanggal <span class="text-red-400">*</span></label>
+                                <input type="date" id="f-atlet-tanggal" class="text-gray-800 !bg-gray-50 !border-gray-200">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Nama Atlet <span class="text-red-400">*</span></label>
+                                <input type="text" id="f-atlet-nama" placeholder="Nama lengkap" class="text-gray-800 !bg-gray-50 !border-gray-200">
+                            </div>
+                        </div>
+                        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Materi Latihan (Jumlah Repetisi)</div>
+                        <div class="form-grid mb-4">
+                            <div><label class="block text-xs text-gray-400 mb-1">Dink</label><input type="number" id="f-atlet-dink" placeholder="0" min="0" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Drop (3rd Shot)</label><input type="number" id="f-atlet-drop" placeholder="0" min="0" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Drive</label><input type="number" id="f-atlet-drive" placeholder="0" min="0" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Serve</label><input type="number" id="f-atlet-serve" placeholder="0" min="0" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                        </div>
+                        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Beban Latihan</div>
+                        <div class="form-grid mb-4">
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">RPE (1-10) <span class="text-red-400">*</span></label>
+                                <input type="number" id="f-atlet-rpe" placeholder="1-10" min="1" max="10" class="text-gray-800 !bg-gray-50 !border-gray-200" oninput="autoCalcTL()">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Durasi (menit) <span class="text-red-400">*</span></label>
+                                <input type="number" id="f-atlet-durasi" placeholder="menit" min="1" class="text-gray-800 !bg-gray-50 !border-gray-200" oninput="autoCalcTL()">
+                            </div>
+                        </div>
+                        <div class="bg-court-50 rounded-lg px-4 py-2 mb-4 flex items-center gap-2">
+                            <span class="text-xs text-court-700 font-medium">Training Load (otomatis):</span>
+                            <span id="f-atlet-tl-display" class="text-lg font-bold text-court-600">0</span>
+                        </div>
+                        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Wellness</div>
+                        <div class="form-grid mb-4">
+                            <div><label class="block text-xs text-gray-400 mb-1">Kualitas Tidur (1-10)</label><input type="number" id="f-atlet-tidur" placeholder="1-10" min="1" max="10" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Nyeri Otot (1-10)</label><input type="number" id="f-atlet-nyeri" placeholder="1-10" min="1" max="10" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Stres (1-10)</label><input type="number" id="f-atlet-stres" placeholder="1-10" min="1" max="10" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="saveAtletEntry()" class="bg-court-600 hover:bg-court-700 text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition">Simpan Jurnal</button>
+                            <button onclick="resetAtletForm()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2.5 rounded-xl text-sm transition">Reset</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search & Filter -->
+            <div id="atlet-results-section">
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6 flex flex-col md:flex-row items-stretch md:items-center gap-3">
+                <div class="flex-1 relative">
+                    <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+                    <input type="text" id="search-atlet-name" placeholder="Cari nama atlet..." class="w-full pl-9 pr-4 !bg-white !border-gray-200 text-gray-800" oninput="applyAtletFilters()">
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-gray-400 whitespace-nowrap">Dari</label>
+                    <input type="date" id="search-atlet-from" class="w-36 !bg-white !border-gray-200 text-gray-800" onchange="applyAtletFilters()">
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-gray-400 whitespace-nowrap">Sampai</label>
+                    <input type="date" id="search-atlet-to" class="w-36 !bg-white !border-gray-200 text-gray-800" onchange="applyAtletFilters()">
+                </div>
+                <button onclick="resetAtletFilters()" class="text-gray-400 hover:text-gray-600 text-xs font-medium px-3 py-2 rounded-lg hover:bg-gray-100 transition whitespace-nowrap">Reset</button>
+                <button onclick="exportAtletCSV()" class="text-court-600 hover:text-court-700 text-xs font-medium flex items-center gap-1 px-3 py-2 rounded-lg hover:bg-court-50 transition whitespace-nowrap">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                    Export CSV
+                </button>
+            </div>
+
+            <!-- Empty State -->
+            <div id="atlet-empty" class="chart-panel mb-6 text-center text-gray-400 text-sm hidden">
+                <svg class="w-12 h-12 mx-auto mb-3 text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+                Belum ada data. Isi jurnal latihan terlebih dahulu.
+            </div>
+
+            <!-- CHARTS -->
+            <div id="atlet-charts" class="hidden space-y-6">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="stat-card-dark" style="border-color:#3b82f6"><div class="text-xs text-gray-400 mb-1">CTL (Fitness)</div><div class="text-2xl font-bold text-blue-400" id="val-ctl">--</div></div>
+                    <div class="stat-card-dark" style="border-color:#ef4444"><div class="text-xs text-gray-400 mb-1">ATL (Fatigue)</div><div class="text-2xl font-bold text-red-400" id="val-atl">--</div></div>
+                    <div class="stat-card-dark" style="border-color:#eab308"><div class="text-xs text-gray-400 mb-1">TSB (Form)</div><div class="text-2xl font-bold text-yellow-400" id="val-tsb">--</div></div>
+                    <div class="stat-card-dark" style="border-color:#22c55e"><div class="text-xs text-gray-400 mb-1">Total Training Load</div><div class="text-2xl font-bold text-court-400" id="val-total-tl">--</div></div>
+                </div>
+                <div class="chart-panel"><div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-gray-300">Training Load Harian</h4><span class="text-xs text-gray-500">RPE x Durasi</span></div><div style="height:200px"><canvas id="chart-daily-load"></canvas></div></div>
+                <div class="chart-panel"><div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-gray-300">Performance Management (PMC)</h4><div><span class="chart-legend-item"><span class="chart-legend-dot" style="background:#3b82f6"></span>CTL</span><span class="chart-legend-item"><span class="chart-legend-dot" style="background:#ef4444"></span>ATL</span><span class="chart-legend-item"><span class="chart-legend-dot" style="background:#eab308"></span>TSB</span></div></div><div style="height:260px"><canvas id="chart-pmc"></canvas></div></div>
+                <div class="chart-panel"><div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-gray-300">Breakdown Materi Latihan</h4><div><span class="chart-legend-item"><span class="chart-legend-dot" style="background:#22c55e"></span>Dink</span><span class="chart-legend-item"><span class="chart-legend-dot" style="background:#3b82f6"></span>Drop</span><span class="chart-legend-item"><span class="chart-legend-dot" style="background:#f97316"></span>Drive</span><span class="chart-legend-item"><span class="chart-legend-dot" style="background:#a855f7"></span>Serve</span></div></div><div style="height:200px"><canvas id="chart-skills"></canvas></div></div>
+                <div class="chart-panel"><div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-gray-300">Wellness Metrics</h4><div><span class="chart-legend-item"><span class="chart-legend-dot" style="background:#6366f1"></span>Tidur</span><span class="chart-legend-item"><span class="chart-legend-dot" style="background:#ef4444"></span>Nyeri Otot</span><span class="chart-legend-item"><span class="chart-legend-dot" style="background:#f59e0b"></span>Stres</span></div></div><div style="height:200px"><canvas id="chart-wellness"></canvas></div></div>
+                <div class="bg-[#1a1f2e] rounded-xl overflow-hidden">
+                    <div class="px-5 py-3 border-b border-gray-700/50 flex items-center justify-between"><h4 class="text-sm font-semibold text-gray-300">Data Latihan Detail</h4><button onclick="deleteAtletSelected()" class="text-red-400 hover:text-red-300 text-xs font-medium">Hapus Semua</button></div>
+                    <div class="table-scroll overflow-x-auto max-h-64 overflow-y-auto">
+                        <table class="w-full text-xs"><thead class="bg-gray-800/50 text-gray-400 uppercase tracking-wider sticky top-0"><tr id="atlet-mini-thead"></tr></thead><tbody id="atlet-mini-tbody" class="divide-y divide-gray-700/30"></tbody></table>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /atlet-results-section -->
+        </div>
+    </div>
+
+    <!-- ==================== PORTAL PELATIH ==================== -->
+    <div id="page-pelatih" class="page">
+        <div class="max-w-6xl mx-auto px-4 py-10 fade-in">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342"/></svg></div>
+                <div><h2 class="text-2xl font-bold text-gray-800">Portal Pelatih</h2><p class="text-gray-400 text-sm">Isi laporan melatih & lihat grafik evaluasi</p></div>
+            </div>
+
+            <!-- FORM INPUT LAPORAN -->
+            <div id="pelatih-form-section" class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-6 overflow-hidden">
+                <div onclick="toggleCollapse('form-pelatih')" class="form-section-toggle flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></div>
+                        <span class="font-bold text-gray-800">Isi Laporan Melatih Hari Ini</span>
+                    </div>
+                    <svg id="icon-form-pelatih" class="w-5 h-5 text-gray-400 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+                </div>
+                <div id="form-pelatih" class="form-collapse px-6 pb-6">
+                    <div class="border-t border-gray-100 pt-5">
+                        <div class="form-grid mb-4">
+                            <div><label class="block text-xs text-gray-400 mb-1">Tanggal <span class="text-red-400">*</span></label><input type="date" id="f-pelatih-tanggal" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Nama Pelatih <span class="text-red-400">*</span></label><input type="text" id="f-pelatih-nama" placeholder="Nama pelatih" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-xs text-gray-400 mb-1">Atlet yang Dilatih <span class="text-red-400">*</span></label>
+                            <input type="text" id="f-pelatih-atlet" placeholder="Nama atlet, pisahkan koma (misal: Andi, Rina, Budi)" class="text-gray-800 !bg-gray-50 !border-gray-200">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-xs text-gray-400 mb-1">Program Latihan <span class="text-red-400">*</span></label>
+                            <select id="f-pelatih-program" class="text-gray-800 !bg-gray-50 !border-gray-200">
+                                <option value="">-- Pilih Program --</option>
+                                <option>Drill Dink & Drop</option>
+                                <option>Power Drive</option>
+                                <option>Conditioning & Serve</option>
+                                <option>Footwork & Agility</option>
+                                <option>Match Simulation</option>
+                                <option>Return of Serve</option>
+                                <option>Net Play & Volley</option>
+                                <option>Video Analysis</option>
+                                <option>Lainnya</option>
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-xs text-gray-400 mb-1">Catatan Evaluasi</label>
+                            <textarea id="f-pelatih-catatan" rows="3" placeholder="Tuliskan catatan evaluasi..." class="text-gray-800 !bg-gray-50 !border-gray-200"></textarea>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="savePelatihEntry()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition">Simpan Laporan</button>
+                            <button onclick="resetPelatihForm()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2.5 rounded-xl text-sm transition">Reset</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Refresh & Export -->
+            <div id="pelatih-results-section">
+            <div class="flex items-center justify-end mb-4 gap-3">
+                <button onclick="exportPelatihCSV()" class="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                    Export CSV
+                </button>
+            </div>
+
+            <!-- Empty State -->
+            <div id="pelatih-empty" class="chart-panel mb-6 text-center text-gray-400 text-sm hidden">
+                <svg class="w-12 h-12 mx-auto mb-3 text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                Belum ada data laporan. Isi form laporan terlebih dahulu.
+            </div>
+
+            <!-- CHARTS PELATIH -->
+            <div id="pelatih-charts" class="hidden space-y-6">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="stat-card-dark" style="border-color:#3b82f6"><div class="text-xs text-gray-400 mb-1">Total Sesi</div><div class="text-2xl font-bold text-blue-400" id="pval-total">--</div></div>
+                    <div class="stat-card-dark" style="border-color:#22c55e"><div class="text-xs text-gray-400 mb-1">Total Atlet Dilatih</div><div class="text-2xl font-bold text-court-400" id="pval-atlet">--</div></div>
+                    <div class="stat-card-dark" style="border-color:#a855f7"><div class="text-xs text-gray-400 mb-1">Program Unik</div><div class="text-2xl font-bold text-purple-400" id="pval-programs">--</div></div>
+                    <div class="stat-card-dark" style="border-color:#f59e0b"><div class="text-xs text-gray-400 mb-1">Hari Aktif</div><div class="text-2xl font-bold text-amber-400" id="pval-days">--</div></div>
+                </div>
+                <div class="chart-panel"><div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-gray-300">Jumlah Sesi per Pelatih</h4></div><div style="height:200px"><canvas id="chart-p-coach"></canvas></div></div>
+                <div class="chart-panel"><div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-gray-300">Frekuensi Program Latihan</h4></div><div style="height:200px"><canvas id="chart-p-programs"></canvas></div></div>
+                <div class="chart-panel"><div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-gray-300">Jumlah Atlet Dilatih per Hari</h4></div><div style="height:200px"><canvas id="chart-p-athletes"></canvas></div></div>
+                <div class="bg-[#1a1f2e] rounded-xl overflow-hidden">
+                    <div class="px-5 py-3 border-b border-gray-700/50 flex items-center justify-between"><h4 class="text-sm font-semibold text-gray-300">Data Laporan Detail</h4><button onclick="deletePelatihAll()" class="text-red-400 hover:text-red-300 text-xs font-medium">Hapus Semua</button></div>
+                    <div class="table-scroll overflow-x-auto max-h-64 overflow-y-auto">
+                        <table class="w-full text-xs"><thead class="bg-gray-800/50 text-gray-400 uppercase tracking-wider sticky top-0"><tr id="pelatih-mini-thead"></tr></thead><tbody id="pelatih-mini-tbody" class="divide-y divide-gray-700/30"></tbody></table>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /pelatih-results-section -->
+        </div>
+    </div>
+
+    <!-- ==================== DASHBOARD MONEV ==================== -->
+    <div id="page-monev" class="page">
+        <div class="max-w-6xl mx-auto px-4 py-10 fade-in">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 bg-amber-600 rounded-lg flex items-center justify-center"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/></svg></div>
+                <div><h2 class="text-2xl font-bold text-gray-800">Dashboard Monev</h2><p class="text-gray-400 text-sm">Monitoring & Evaluasi Latihan Pickleball - KONI Kota Surabaya</p></div>
+            </div>
+
+            <!-- FORM MONEV (6 Sections) -->
+            <div id="monev-form-section" class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-6 overflow-hidden">
+                <div onclick="toggleCollapse('form-monev')" class="form-section-toggle flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center"><svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></div>
+                        <span class="font-bold text-gray-800">Isi Formulir Monev Lapangan</span>
+                    </div>
+                    <svg id="icon-form-monev" class="w-5 h-5 text-gray-400 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+                </div>
+                <div id="form-monev" class="form-collapse px-6 pb-6">
+                    <div class="border-t border-gray-100 pt-5">
+
+                        <!-- SECTION 1: Identitas & Informasi Umum -->
+                        <div class="mb-5">
+                            <div class="flex items-center gap-2 mb-3"><span class="w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold">1</span><span class="font-semibold text-gray-700 text-sm">Identitas & Informasi Umum</span></div>
+                            <div class="form-grid mb-3">
+                                <div><label class="block text-xs text-gray-400 mb-1">Nama Petugas Monev <span class="text-red-400">*</span></label><input type="text" id="fm-petugas" placeholder="Nama lengkap" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Tanggal Kunjungan <span class="text-red-400">*</span></label><input type="date" id="fm-tanggal" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            </div>
+                            <div class="form-grid mb-3">
+                                <div><label class="block text-xs text-gray-400 mb-1">Waktu Kunjungan <span class="text-red-400">*</span></label>
+                                    <select id="fm-waktu" class="text-gray-800 !bg-gray-50 !border-gray-200"><option value="">-- Pilih --</option><option>Sesi Pagi (06-10)</option><option>Sesi Siang (10-14)</option><option>Sesi Sore (14-18)</option><option>Sesi Malam (18-21)</option></select>
+                                </div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Lokasi Latihan <span class="text-red-400">*</span></label><input type="text" id="fm-lokasi" placeholder="Nama venue / alamat" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            </div>
+                            <div class="form-grid">
+                                <div><label class="block text-xs text-gray-400 mb-1">Nama Pelatih yang Hadir</label><input type="text" id="fm-pelatih-hadir" placeholder="Pisahkan koma" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Cuaca</label>
+                                    <select id="fm-cuaca" class="text-gray-800 !bg-gray-50 !border-gray-200"><option value="">-- Pilih --</option><option>Cerah</option><option>Berawan</option><option>Hujan Ringan</option><option>Hujan Lebat</option><option>Panas Terik</option></select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SECTION 2: Kehadiran & Kedisiplinan -->
+                        <div class="mb-5">
+                            <div class="flex items-center gap-2 mb-3"><span class="w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold">2</span><span class="font-semibold text-gray-700 text-sm">Kehadiran & Kedisiplinan</span></div>
+                            <div class="form-grid mb-3">
+                                <div><label class="block text-xs text-gray-400 mb-1">Jumlah Atlet Dipanggil <span class="text-red-400">*</span></label><input type="number" id="fm-dipanggil" placeholder="0" min="0" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Jumlah Atlet Hadir <span class="text-red-400">*</span></label><input type="number" id="fm-hadir" placeholder="0" min="0" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="block text-xs text-gray-400 mb-1">Alasan Absen</label>
+                                <div class="flex flex-wrap gap-3 text-sm text-gray-600">
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-absen-sakit" class="rounded"> Sakit</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-absen-izin" class="rounded"> Izin</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-absen-tanpa" class="rounded"> Tanpa Keterangan</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-absen-cedera" class="rounded"> Cedera</label>
+                                </div>
+                            </div>
+                            <div class="form-grid">
+                                <div><label class="block text-xs text-gray-400 mb-1">Waktu Mulai Sebenarnya</label><input type="time" id="fm-waktu-mulai" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Kedisiplinan Waktu (1-5) <span class="text-red-400">*</span></label><input type="number" id="fm-kedisiplinan" placeholder="1-5" min="1" max="5" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            </div>
+                        </div>
+
+                        <!-- SECTION 3: Pelaksanaan Program Latihan -->
+                        <div class="mb-5">
+                            <div class="flex items-center gap-2 mb-3"><span class="w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold">3</span><span class="font-semibold text-gray-700 text-sm">Pelaksanaan Program Latihan</span></div>
+                            <div class="form-grid mb-3">
+                                <div><label class="block text-xs text-gray-400 mb-1">Fase Periodisasi <span class="text-red-400">*</span></label>
+                                    <select id="fm-fase" class="text-gray-800 !bg-gray-50 !border-gray-200"><option value="">-- Pilih --</option><option>Persiapan Umum</option><option>Persiapan Khusus</option><option>Pra-Kompetisi</option><option>Kompetisi</option><option>Transisi</option></select>
+                                </div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Sesuai RPL? <span class="text-red-400">*</span></label>
+                                    <select id="fm-sesuai-rpl" class="text-gray-800 !bg-gray-50 !border-gray-200"><option value="">-- Pilih --</option><option>Sesuai sepenuhnya</option><option>Sebagian besar sesuai</option><option>Sedikit sesuai</option><option>Tidak sesuai</option><option>RPL belum disetorkan</option></select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="block text-xs text-gray-400 mb-1">Fokus Latihan (bisa lebih dari 1)</label>
+                                <div class="flex flex-wrap gap-3 text-sm text-gray-600">
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-fokus-fisik" class="rounded"> Fisik</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-fokus-teknik" class="rounded"> Teknik</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-fokus-taktik" class="rounded"> Taktik</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-fokus-mental" class="rounded"> Mental</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="block text-xs text-gray-400 mb-1">Materi Spesifik Pickleball</label>
+                                <div class="flex flex-wrap gap-3 text-sm text-gray-600">
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-materi-dink" class="rounded"> Dink</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-materi-drop" class="rounded"> 3rd Shot Drop</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-materi-drive" class="rounded"> Drive</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-materi-serve" class="rounded"> Serve & Return</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-materi-footwork" class="rounded"> Footwork</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-materi-volley" class="rounded"> Volley/Net Play</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-materi-match" class="rounded"> Match Simulation</label>
+                                </div>
+                            </div>
+                            <div class="form-grid">
+                                <div><label class="block text-xs text-gray-400 mb-1">Durasi Sesi (menit)</label><input type="number" id="fm-durasi-sesi" placeholder="menit" min="0" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Kualitas Instruksi Pelatih (1-5)</label><input type="number" id="fm-kualitas-instruksi" placeholder="1-5" min="1" max="5" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            </div>
+                        </div>
+
+                        <!-- SECTION 4: Kelayakan Sarana & Prasarana -->
+                        <div class="mb-5">
+                            <div class="flex items-center gap-2 mb-3"><span class="w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold">4</span><span class="font-semibold text-gray-700 text-sm">Kelayakan Sarana & Prasarana</span></div>
+                            <div class="form-grid mb-3">
+                                <div><label class="block text-xs text-gray-400 mb-1">Kondisi Garis Lapangan (1-5)</label><input type="number" id="fm-garis" placeholder="1-5" min="1" max="5" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Kondisi Permukaan (1-5)</label><input type="number" id="fm-permukaan" placeholder="1-5" min="1" max="5" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Kondisi Net (1-5)</label><input type="number" id="fm-net" placeholder="1-5" min="1" max="5" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Kualitas Paddle (1-5)</label><input type="number" id="fm-paddle" placeholder="1-5" min="1" max="5" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                            </div>
+                            <div class="form-grid mb-3">
+                                <div><label class="block text-xs text-gray-400 mb-1">Ketersediaan Bola</label>
+                                    <select id="fm-bola" class="text-gray-800 !bg-gray-50 !border-gray-200"><option value="">-- Pilih --</option><option>Sangat Cukup (>10)</option><option>Cukup (5-10)</option><option>Kurang (<5)</option><option>Tidak ada</option></select>
+                                </div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Kotak P3K</label>
+                                    <select id="fm-p3k" class="text-gray-800 !bg-gray-50 !border-gray-200"><option value="">-- Pilih --</option><option>Ada & Lengkap</option><option>Ada, Tidak Lengkap</option><option>Tidak Ada</option></select>
+                                </div>
+                            </div>
+                            <div class="form-grid">
+                                <div><label class="block text-xs text-gray-400 mb-1">Air Minum</label>
+                                    <select id="fm-air" class="text-gray-800 !bg-gray-50 !border-gray-200"><option value="">-- Pilih --</option><option>Cukup</option><option>Terbatas</option><option>Tidak Ada</option></select>
+                                </div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Cone / Marker</label>
+                                    <select id="fm-cone" class="text-gray-800 !bg-gray-50 !border-gray-200"><option value="">-- Pilih --</option><option>Tersedia & Digunakan</option><option>Tersedia, Tidak Digunakan</option><option>Tidak Tersedia</option></select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SECTION 5: Evaluasi, Kendala & Rekomendasi -->
+                        <div class="mb-5">
+                            <div class="flex items-center gap-2 mb-3"><span class="w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold">5</span><span class="font-semibold text-gray-700 text-sm">Evaluasi, Kendala & Rekomendasi</span></div>
+                            <div class="mb-3">
+                                <label class="block text-xs text-gray-400 mb-1">Kendala Teknis</label>
+                                <div class="flex flex-wrap gap-3 text-sm text-gray-600">
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-kendala-lapangan" class="rounded"> Lapangan</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-kendala-peralatan" class="rounded"> Peralatan</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-kendala-cuaca" class="rounded"> Cuaca</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-kendala-medik" class="rounded"> Medik</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="block text-xs text-gray-400 mb-1">Kendala Non-Teknis</label>
+                                <div class="flex flex-wrap gap-3 text-sm text-gray-600">
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-kendala-dana" class="rounded"> Dana</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-kendala-atlet" class="rounded"> Jumlah Atlet</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-kendala-jadwal" class="rounded"> Jadwal</label>
+                                    <label class="flex items-center gap-1"><input type="checkbox" id="fm-kendala-motivasi" class="rounded"> Motivasi</label>
+                                </div>
+                            </div>
+                            <div class="mb-3"><label class="block text-xs text-gray-400 mb-1">Catatan Khusus / Temuan</label><textarea id="fm-catatan" rows="3" placeholder="Tuliskan temuan dari observasi lapangan..." class="text-gray-800 !bg-gray-50 !border-gray-200"></textarea></div>
+                            <div class="mb-3"><label class="block text-xs text-gray-400 mb-1">Rekomendasi Tindak Lanjut</label><textarea id="fm-rekomendasi" rows="3" placeholder="Rekomendasi untuk KONI Kota Surabaya..." class="text-gray-800 !bg-gray-50 !border-gray-200"></textarea></div>
+                            <div class="form-grid">
+                                <div><label class="block text-xs text-gray-400 mb-1">Penilaian Umum (1-5) <span class="text-red-400">*</span></label><input type="number" id="fm-penilaian" placeholder="1-5" min="1" max="5" class="text-gray-800 !bg-gray-50 !border-gray-200"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Perlu Follow-up?</label>
+                                    <select id="fm-followup" class="text-gray-800 !bg-gray-50 !border-gray-200"><option value="">-- Pilih --</option><option>Ya, segera (1-2 minggu)</option><option>Ya, bulan depan</option><option>Tidak perlu</option><option>Belum pasti</option></select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SECTION 6: Foto Hasil Monev -->
+                        <div class="mb-5">
+                            <div class="flex items-center gap-2 mb-3"><span class="w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold">6</span><span class="font-semibold text-gray-700 text-sm">Foto Hasil Monev</span></div>
+                            <div class="mb-3">
+                                <label class="block text-xs text-gray-400 mb-1">Upload Foto (maks. 5 foto, max 2MB per foto)</label>
+                                <div class="relative">
+                                    <input type="file" id="fm-foto" accept="image/*" multiple class="hidden" onchange="previewMonevPhotos(event)">
+                                    <label for="fm-foto" class="flex items-center justify-center gap-2 w-full border-2 border-dashed border-gray-300 rounded-xl px-4 py-6 cursor-pointer hover:border-amber-400 hover:bg-amber-50/30 transition">
+                                        <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"/></svg>
+                                        <span class="text-sm text-gray-500">Klik untuk upload foto</span>
+                                    </label>
+                                </div>
+                                <div id="fm-foto-preview" class="flex flex-wrap gap-3 mt-3"></div>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-3">
+                            <button onclick="saveMonevEntry()" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition">Simpan Laporan Monev</button>
+                            <button onclick="resetMonevForm()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2.5 rounded-xl text-sm transition">Reset Form</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search & Export -->
+            <div id="monev-results-section">
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6 flex flex-col md:flex-row items-stretch md:items-center gap-3">
+                <div class="flex-1 relative">
+                    <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+                    <input type="text" id="search-monev-name" placeholder="Cari nama petugas / lokasi..." class="w-full pl-9 pr-4 !bg-white !border-gray-200 text-gray-800" oninput="applyMonevFilters()">
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-gray-400 whitespace-nowrap">Dari</label>
+                    <input type="date" id="search-monev-from" class="w-36 !bg-white !border-gray-200 text-gray-800" onchange="applyMonevFilters()">
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-gray-400 whitespace-nowrap">Sampai</label>
+                    <input type="date" id="search-monev-to" class="w-36 !bg-white !border-gray-200 text-gray-800" onchange="applyMonevFilters()">
+                </div>
+                <button onclick="resetMonevFilters()" class="text-gray-400 hover:text-gray-600 text-xs font-medium px-3 py-2 rounded-lg hover:bg-gray-100 transition whitespace-nowrap">Reset</button>
+                <button onclick="exportMonevCSV()" class="text-amber-600 hover:text-amber-700 text-xs font-medium flex items-center gap-1 px-3 py-2 rounded-lg hover:bg-amber-50 transition whitespace-nowrap">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                    Export CSV
+                </button>
+            </div>
+
+            <!-- Empty State -->
+            <div id="monev-empty" class="chart-panel mb-6 text-center text-gray-400 text-sm hidden">
+                <svg class="w-12 h-12 mx-auto mb-3 text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                Belum ada data monev. Isi formulir terlebih dahulu.
+            </div>
+
+            <!-- CHARTS MONEV -->
+            <div id="monev-charts" class="hidden space-y-6">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="stat-card-dark" style="border-color:#f59e0b"><div class="text-xs text-gray-400 mb-1">Total Kunjungan</div><div class="text-2xl font-bold text-amber-400" id="mval-total">--</div></div>
+                    <div class="stat-card-dark" style="border-color:#22c55e"><div class="text-xs text-gray-400 mb-1">Rata-rata Kehadiran</div><div class="text-2xl font-bold text-court-400" id="mval-kehadiran">--</div></div>
+                    <div class="stat-card-dark" style="border-color:#3b82f6"><div class="text-xs text-gray-400 mb-1">Rata-rata Penilaian</div><div class="text-2xl font-bold text-blue-400" id="mval-penilaian">--</div></div>
+                    <div class="stat-card-dark" style="border-color:#ef4444"><div class="text-xs text-gray-400 mb-1">Perlu Follow-up</div><div class="text-2xl font-bold text-red-400" id="mval-followup">--</div></div>
+                </div>
+                <div class="chart-panel"><div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-gray-300">Penilaian Umum per Kunjungan</h4></div><div style="height:200px"><canvas id="chart-m-penilaian"></canvas></div></div>
+                <div class="chart-panel"><div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-gray-300">Tingkat Kehadiran Atlet (%)</h4></div><div style="height:200px"><canvas id="chart-m-kehadiran"></canvas></div></div>
+                <div class="chart-panel"><div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-gray-300">Kendala yang Ditemukan</h4></div><div style="height:200px"><canvas id="chart-m-kendala"></canvas></div></div>
+                <div class="bg-[#1a1f2e] rounded-xl overflow-hidden">
+                    <div class="px-5 py-3 border-b border-gray-700/50 flex items-center justify-between"><h4 class="text-sm font-semibold text-gray-300">Data Monev Detail</h4><button onclick="deleteMonevAll()" class="text-red-400 hover:text-red-300 text-xs font-medium">Hapus Semua</button></div>
+                    <div class="table-scroll overflow-x-auto max-h-64 overflow-y-auto">
+                        <table class="w-full text-xs"><thead class="bg-gray-800/50 text-gray-400 uppercase tracking-wider sticky top-0"><tr id="monev-mini-thead"></tr></thead><tbody id="monev-mini-tbody" class="divide-y divide-gray-700/30"></tbody></table>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /monev-results-section -->
+        </div>
+    </div>
+
+    <footer class="text-center text-xs text-gray-400 py-6 mt-12 border-t border-gray-100">Sistem Monitoring Pickleball &copy; 2026</footer>
+
+    <script>
+    // ========================================================================
+    //  LOCALSTORAGE KEYS
+    // ========================================================================
+    const LS_KEY_ATLET = 'pb_monitor_atlet';
+    const LS_KEY_PELATIH = 'pb_monitor_pelatih';
+    const LS_KEY_MONEV = 'pb_monitor_monev';
+
+    // ========================================================================
+    //  CHART INSTANCES & RAW DATA
+    // ========================================================================
+    let chartDailyLoad=null,chartPMC=null,chartSkills=null,chartWellness=null;
+    let chartPCoach=null,chartPPrograms=null,chartPAthletes=null;
+    let chartMPenilaian=null,chartMKehadiran=null,chartMKendala=null;
+    let rawAtletRows=[], rawAtletHeaders=['Tanggal','Nama Atlet','Dink','Drop','Drive','Serve','RPE','Durasi (menit)','Training Load','Tidur','Nyeri Otot','Stres'];
+
+    // ========================================================================
+    //  NAVIGASI TAB
+    // ========================================================================
+    function showPage(page) {
+        document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+        document.getElementById('page-'+page).classList.add('active');
+        window.scrollTo({top:0,behavior:'smooth'});
+        if(page==='atlet') renderAtletFromStorage();
+        if(page==='pelatih') renderPelatihFromStorage();
+        if(page==='monev') renderMonevFromStorage();
+        updateStats();
+    }
+
+    // ========================================================================
+    //  PORTAL MODE: Form Only vs Results Only
+    // ========================================================================
+    function showAtletMode(mode) {
+        showPage('atlet');
+        const formSection = document.getElementById('atlet-form-section');
+        const resultsSection = document.getElementById('atlet-results-section');
+        if (mode === 'form') {
+            formSection.classList.remove('hidden');
+            resultsSection.classList.add('hidden');
+        } else {
+            formSection.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+            renderAtletFromStorage();
+        }
+    }
+
+    function showPelatihMode(mode) {
+        showPage('pelatih');
+        const formSection = document.getElementById('pelatih-form-section');
+        const resultsSection = document.getElementById('pelatih-results-section');
+        if (mode === 'form') {
+            formSection.classList.remove('hidden');
+            resultsSection.classList.add('hidden');
+        } else {
+            formSection.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+            renderPelatihFromStorage();
+        }
+    }
+
+    function showMonevMode(mode) {
+        showPage('monev');
+        const formSection = document.getElementById('monev-form-section');
+        const resultsSection = document.getElementById('monev-results-section');
+        if (mode === 'form') {
+            formSection.classList.remove('hidden');
+            resultsSection.classList.add('hidden');
+        } else {
+            formSection.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+            renderMonevFromStorage();
+        }
+    }
+
+    // ========================================================================
+    //  TOAST NOTIFICATION
+    // ========================================================================
+    function showToast(msg, type='success') {
+        const t = document.getElementById('toast');
+        t.textContent = msg; t.className = 'toast ' + type;
+        setTimeout(()=> t.classList.add('show'), 10);
+        setTimeout(()=> t.classList.remove('show'), 2500);
+    }
+
+    // ========================================================================
+    //  COLLAPSE TOGGLE
+    // ========================================================================
+    function toggleCollapse(id) {
+        const el = document.getElementById(id);
+        const icon = document.getElementById('icon-' + id);
+        el.classList.toggle('open');
+        if(icon) icon.style.transform = el.classList.contains('open') ? 'rotate(180deg)' : '';
+    }
+
+    // ========================================================================
+    //  UTILITY
+    // ========================================================================
+    function num(val) { if(val==null)return 0; const n=parseFloat(String(val).replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; }
+    function today() { return new Date().toISOString().split('T')[0]; }
+    function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2,5); }
+
+    // ========================================================================
+    //  LOCALSTORAGE READ/WRITE
+    // ========================================================================
+    function getAtletData() { try { return JSON.parse(localStorage.getItem(LS_KEY_ATLET)) || []; } catch(e){ return []; } }
+    function setAtletData(data) { localStorage.setItem(LS_KEY_ATLET, JSON.stringify(data)); }
+    function getPelatihData() { try { return JSON.parse(localStorage.getItem(LS_KEY_PELATIH)) || []; } catch(e){ return []; } }
+    function setPelatihData(data) { localStorage.setItem(LS_KEY_PELATIH, JSON.stringify(data)); }
+    function getMonevData() { try { return JSON.parse(localStorage.getItem(LS_KEY_MONEV)) || []; } catch(e){ return []; } }
+    function setMonevData(data) { localStorage.setItem(LS_KEY_MONEV, JSON.stringify(data)); }
+
+    // ========================================================================
+    //  AUTO CALC Training Load
+    // ========================================================================
+    function autoCalcTL() {
+        const rpe = num(document.getElementById('f-atlet-rpe').value);
+        const dur = num(document.getElementById('f-atlet-durasi').value);
+        document.getElementById('f-atlet-tl-display').textContent = rpe * dur;
+    }
+
+    // ========================================================================
+    //  ATLET: SAVE ENTRY
+    // ========================================================================
+    function saveAtletEntry() {
+        const tanggal = document.getElementById('f-atlet-tanggal').value;
+        const nama = document.getElementById('f-atlet-nama').value.trim();
+        const rpe = num(document.getElementById('f-atlet-rpe').value);
+        const durasi = num(document.getElementById('f-atlet-durasi').value);
+        if(!tanggal || !nama) { showToast('Tanggal dan Nama Atlet wajib diisi!', 'error'); return; }
+        if(rpe < 1 || rpe > 10) { showToast('RPE harus 1-10!', 'error'); return; }
+        if(durasi < 1) { showToast('Durasi minimal 1 menit!', 'error'); return; }
+        const entry = {
+            id: generateId(),
+            Tanggal: tanggal,
+            'Nama Atlet': nama,
+            Dink: String(num(document.getElementById('f-atlet-dink').value)),
+            Drop: String(num(document.getElementById('f-atlet-drop').value)),
+            Drive: String(num(document.getElementById('f-atlet-drive').value)),
+            Serve: String(num(document.getElementById('f-atlet-serve').value)),
+            RPE: String(rpe),
+            'Durasi (menit)': String(durasi),
+            'Training Load': String(rpe * durasi),
+            Tidur: String(num(document.getElementById('f-atlet-tidur').value)),
+            'Nyeri Otot': String(num(document.getElementById('f-atlet-nyeri').value)),
+            Stres: String(num(document.getElementById('f-atlet-stres').value))
+        };
+        const data = getAtletData();
+        data.push(entry);
+        setAtletData(data);
+        resetAtletForm();
+        showToast('Jurnal latihan tersimpan!');
+        renderAtletFromStorage();
+        updateStats();
+    }
+
+    function resetAtletForm() {
+        ['f-atlet-tanggal','f-atlet-nama','f-atlet-dink','f-atlet-drop','f-atlet-drive','f-atlet-serve','f-atlet-rpe','f-atlet-durasi','f-atlet-tidur','f-atlet-nyeri','f-atlet-stres'].forEach(id=>{ document.getElementById(id).value=''; });
+        document.getElementById('f-atlet-tanggal').value = today();
+        document.getElementById('f-atlet-tl-display').textContent = '0';
+    }
+
+    // ========================================================================
+    //  ATLET: RENDER FROM STORAGE
+    // ========================================================================
+    function renderAtletFromStorage() {
+        const data = getAtletData();
+        rawAtletRows = data;
+        if(data.length === 0) {
+            document.getElementById('atlet-charts').classList.add('hidden');
+            document.getElementById('atlet-empty').classList.remove('hidden');
+        } else {
+            document.getElementById('atlet-empty').classList.add('hidden');
+            renderAtletCharts(data);
+            renderMiniTable(rawAtletHeaders, data, 'atlet');
+            document.getElementById('atlet-charts').classList.remove('hidden');
+        }
+    }
+
+    // ========================================================================
+    //  ATLET: FILTERS
+    // ========================================================================
+    function applyAtletFilters() {
+        const q = (document.getElementById('search-atlet-name').value||'').toLowerCase().trim();
+        const from = document.getElementById('search-atlet-from').value||'';
+        const to = document.getElementById('search-atlet-to').value||'';
+        const filtered = rawAtletRows.filter(r=>{
+            if(q && !(r['Nama Atlet']||'').toLowerCase().includes(q)) return false;
+            if(from && (r.Tanggal||'') < from) return false;
+            if(to && (r.Tanggal||'') > to) return false;
+            return true;
+        });
+        if(filtered.length===0) {
+            document.getElementById('atlet-charts').classList.add('hidden');
+            document.getElementById('atlet-empty').classList.remove('hidden');
+        } else {
+            document.getElementById('atlet-empty').classList.add('hidden');
+            renderAtletCharts(filtered);
+            renderMiniTable(rawAtletHeaders, filtered, 'atlet');
+            document.getElementById('atlet-charts').classList.remove('hidden');
+        }
+    }
+
+    function resetAtletFilters() {
+        document.getElementById('search-atlet-name').value='';
+        document.getElementById('search-atlet-from').value='';
+        document.getElementById('search-atlet-to').value='';
+        renderAtletFromStorage();
+    }
+
+    // ========================================================================
+    //  ATLET: DELETE ALL
+    // ========================================================================
+    function deleteAtletSelected() {
+        if(!confirm('Hapus semua data latihan atlet?')) return;
+        setAtletData([]);
+        rawAtletRows = [];
+        document.getElementById('atlet-charts').classList.add('hidden');
+        document.getElementById('atlet-empty').classList.remove('hidden');
+        updateStats();
+        showToast('Semua data atlet dihapus');
+    }
+
+    // ========================================================================
+    //  ATLET: EXPORT CSV
+    // ========================================================================
+    function exportAtletCSV() {
+        const data = getAtletData();
+        if(data.length===0) { showToast('Tidak ada data untuk di-export', 'error'); return; }
+        const headers = rawAtletHeaders;
+        let csv = headers.join(',') + '\n';
+        data.forEach(r => {
+            csv += headers.map(h => '"' + (r[h]||'').replace(/"/g,'""') + '"').join(',') + '\n';
+        });
+        downloadCSV(csv, 'jurnal-latihan-atlet-' + today() + '.csv');
+        showToast('CSV berhasil di-export!');
+    }
+
+    // ========================================================================
+    //  PELATIH: SAVE ENTRY
+    // ========================================================================
+    function savePelatihEntry() {
+        const tanggal = document.getElementById('f-pelatih-tanggal').value;
+        const nama = document.getElementById('f-pelatih-nama').value.trim();
+        const atlet = document.getElementById('f-pelatih-atlet').value.trim();
+        const program = document.getElementById('f-pelatih-program').value;
+        const catatan = document.getElementById('f-pelatih-catatan').value.trim();
+        if(!tanggal || !nama || !atlet || !program) { showToast('Tanggal, Nama Pelatih, Atlet, dan Program wajib diisi!', 'error'); return; }
+        const entry = {
+            id: generateId(),
+            Tanggal: tanggal,
+            'Nama Pelatih': nama,
+            'Atlet yang Dilatih': atlet,
+            'Program Latihan': program,
+            'Catatan Evaluasi': catatan
+        };
+        const data = getPelatihData();
+        data.push(entry);
+        setPelatihData(data);
+        resetPelatihForm();
+        showToast('Laporan pelatih tersimpan!');
+        renderPelatihFromStorage();
+        updateStats();
+    }
+
+    function resetPelatihForm() {
+        document.getElementById('f-pelatih-tanggal').value = today();
+        document.getElementById('f-pelatih-nama').value = '';
+        document.getElementById('f-pelatih-atlet').value = '';
+        document.getElementById('f-pelatih-program').value = '';
+        document.getElementById('f-pelatih-catatan').value = '';
+    }
+
+    // ========================================================================
+    //  PELATIH: RENDER FROM STORAGE
+    // ========================================================================
+    function renderPelatihFromStorage() {
+        const data = getPelatihData();
+        if(data.length === 0) {
+            document.getElementById('pelatih-charts').classList.add('hidden');
+            document.getElementById('pelatih-empty').classList.remove('hidden');
+        } else {
+            document.getElementById('pelatih-empty').classList.add('hidden');
+            renderPelatihCharts(data);
+            document.getElementById('pelatih-charts').classList.remove('hidden');
+        }
+    }
+
+    // ========================================================================
+    //  PELATIH: DELETE ALL
+    // ========================================================================
+    function deletePelatihAll() {
+        if(!confirm('Hapus semua data laporan pelatih?')) return;
+        setPelatihData([]);
+        document.getElementById('pelatih-charts').classList.add('hidden');
+        document.getElementById('pelatih-empty').classList.remove('hidden');
+        updateStats();
+        showToast('Semua data pelatih dihapus');
+    }
+
+    // ========================================================================
+    //  PELATIH: EXPORT CSV
+    // ========================================================================
+    function exportPelatihCSV() {
+        const data = getPelatihData();
+        if(data.length===0) { showToast('Tidak ada data untuk di-export', 'error'); return; }
+        const headers = ['Tanggal','Nama Pelatih','Atlet yang Dilatih','Program Latihan','Catatan Evaluasi'];
+        let csv = headers.join(',') + '\n';
+        data.forEach(r => {
+            csv += headers.map(h => '"' + (r[h]||'').replace(/"/g,'""') + '"').join(',') + '\n';
+        });
+        downloadCSV(csv, 'laporan-pelatih-' + today() + '.csv');
+        showToast('CSV berhasil di-export!');
+    }
+
+    // ========================================================================
+    //  DOWNLOAD CSV HELPER
+    // ========================================================================
+    function downloadCSV(csv, filename) {
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    }
+
+    // ========================================================================
+    //  UPDATE STATS (Beranda)
+    // ========================================================================
+    function updateStats() {
+        const a = getAtletData();
+        const p = getPelatihData();
+        const m = getMonevData();
+        document.getElementById('stat-atlet').textContent = a.length;
+        document.getElementById('stat-pelatih').textContent = p.length;
+        if(document.getElementById('stat-monev')) document.getElementById('stat-monev').textContent = m.length;
+        const allDates = new Set([...a.map(r=>r.Tanggal), ...p.map(r=>r.Tanggal), ...m.map(r=>r.Tanggal)]);
+        document.getElementById('stat-hari').textContent = allDates.size;
+    }
+
+    // ========================================================================
+    //  PMC CALCULATOR
+    // ========================================================================
+    function computePMC(dailyLoads) {
+        const CTL_TAU=42,ATL_TAU=7; const ctl=[],atl=[],tsb=[]; let pC=0,pA=0;
+        for(let i=0;i<dailyLoads.length;i++){
+            const c=pC+(dailyLoads[i]-pC)/CTL_TAU; const a=pA+(dailyLoads[i]-pA)/ATL_TAU;
+            ctl.push(Math.round(c*10)/10); atl.push(Math.round(a*10)/10); tsb.push(Math.round((c-a)*10)/10);
+            pC=c; pA=a;
+        }
+        return {ctl,atl,tsb};
+    }
+
+    // ========================================================================
+    //  CHART.JS COMMON CONFIG
+    // ========================================================================
+    const CHART_GRID='rgba(148,163,184,0.08)',CHART_TICK='#64748b';
+    function baseScaleOpts(){return{x:{ticks:{color:CHART_TICK,font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:10},grid:{color:CHART_GRID},border:{display:false}},y:{ticks:{color:CHART_TICK,font:{size:10}},grid:{color:CHART_GRID},border:{display:false}}};}
+    const baseLegend={display:false};
+    function baseTooltip(){return{backgroundColor:'#1e293b',titleColor:'#e2e8f0',bodyColor:'#cbd5e1',borderColor:'#334155',borderWidth:1,cornerRadius:8,padding:10,titleFont:{weight:'600'}};}
+
+    // ========================================================================
+    //  RENDER ATLET CHARTS
+    // ========================================================================
+    function renderAtletCharts(rows) {
+        rows.sort((a,b)=>(a.Tanggal||'').localeCompare(b.Tanggal||''));
+        const labels=rows.map(r=>{const d=r.Tanggal||'';return d.length>=10?d.substring(5,10):d;});
+        const dailyLoads=rows.map(r=>num(r.RPE)*num(r['Durasi (menit)']));
+        const pmc=computePMC(dailyLoads);
+        const last=dailyLoads.length-1;
+        document.getElementById('val-ctl').textContent=pmc.ctl[last]||'0';
+        document.getElementById('val-atl').textContent=pmc.atl[last]||'0';
+        document.getElementById('val-tsb').textContent=pmc.tsb[last]||'0';
+        document.getElementById('val-total-tl').textContent=dailyLoads.reduce((s,v)=>s+v,0).toLocaleString();
+
+        if(chartDailyLoad)chartDailyLoad.destroy();
+        chartDailyLoad=new Chart(document.getElementById('chart-daily-load'),{type:'bar',data:{labels,datasets:[{data:dailyLoads,backgroundColor:dailyLoads.map(v=>v>=600?'rgba(239,68,68,0.7)':v>=350?'rgba(234,179,8,0.7)':'rgba(34,197,94,0.7)'),borderRadius:4,borderSkipped:false,maxBarThickness:28}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:baseLegend,tooltip:{...baseTooltip(),callbacks:{title:i=>rows[i[0].dataIndex].Tanggal,label:i=>`TL: ${i.raw}`}}},scales:baseScaleOpts()}});
+
+        if(chartPMC)chartPMC.destroy();
+        chartPMC=new Chart(document.getElementById('chart-pmc'),{type:'line',data:{labels,datasets:[{label:'CTL',data:pmc.ctl,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,0.08)',fill:true,tension:0.4,borderWidth:2.5,pointRadius:0,pointHoverRadius:5},{label:'ATL',data:pmc.atl,borderColor:'#ef4444',backgroundColor:'rgba(239,68,68,0.06)',fill:true,tension:0.4,borderWidth:2,pointRadius:0,pointHoverRadius:5},{label:'TSB',data:pmc.tsb,borderColor:'#eab308',backgroundColor:'transparent',fill:false,tension:0.4,borderWidth:2,borderDash:[5,3],pointRadius:0,pointHoverRadius:5}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:baseLegend,tooltip:{...baseTooltip(),callbacks:{title:i=>rows[i[0].dataIndex].Tanggal}}},scales:baseScaleOpts()}});
+
+        if(chartSkills)chartSkills.destroy();
+        chartSkills=new Chart(document.getElementById('chart-skills'),{type:'bar',data:{labels,datasets:[{label:'Dink',data:rows.map(r=>num(r.Dink)),backgroundColor:'#22c55e',borderRadius:2,maxBarThickness:24},{label:'Drop',data:rows.map(r=>num(r.Drop)),backgroundColor:'#3b82f6',borderRadius:2,maxBarThickness:24},{label:'Drive',data:rows.map(r=>num(r.Drive)),backgroundColor:'#f97316',borderRadius:2,maxBarThickness:24},{label:'Serve',data:rows.map(r=>num(r.Serve)),backgroundColor:'#a855f7',borderRadius:2,maxBarThickness:24}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:baseLegend,tooltip:{...baseTooltip(),callbacks:{title:i=>rows[i[0].dataIndex].Tanggal}}},scales:{x:{stacked:true,ticks:{color:CHART_TICK,font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:10},grid:{display:false},border:{display:false}},y:{stacked:true,ticks:{color:CHART_TICK,font:{size:10}},grid:{color:CHART_GRID},border:{display:false}}}}});
+
+        if(chartWellness)chartWellness.destroy();
+        chartWellness=new Chart(document.getElementById('chart-wellness'),{type:'line',data:{labels,datasets:[{label:'Tidur',data:rows.map(r=>num(r.Tidur)),borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,0.08)',fill:true,tension:0.4,borderWidth:2,pointRadius:3,pointBackgroundColor:'#6366f1'},{label:'Nyeri Otot',data:rows.map(r=>num(r['Nyeri Otot'])),borderColor:'#ef4444',fill:false,tension:0.4,borderWidth:2,pointRadius:3,pointBackgroundColor:'#ef4444'},{label:'Stres',data:rows.map(r=>num(r.Stres)),borderColor:'#f59e0b',fill:false,tension:0.4,borderWidth:2,pointRadius:3,pointBackgroundColor:'#f59e0b'}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:baseLegend,tooltip:{...baseTooltip(),callbacks:{title:i=>rows[i[0].dataIndex].Tanggal}}},scales:baseScaleOpts()}});
+    }
+
+    // ========================================================================
+    //  RENDER PELATIH CHARTS
+    // ========================================================================
+    function renderPelatihCharts(rows) {
+        rows.sort((a,b)=>(a.Tanggal||'').localeCompare(b.Tanggal||''));
+        const coachCount={};rows.forEach(r=>{const c=r['Nama Pelatih']||'Unknown';coachCount[c]=(coachCount[c]||0)+1;});
+        const coachLabels=Object.keys(coachCount),coachValues=Object.values(coachCount);
+        const progCount={};rows.forEach(r=>{const p=r['Program Latihan']||'Unknown';progCount[p]=(progCount[p]||0)+1;});
+        const progLabels=Object.keys(progCount).sort((a,b)=>progCount[b]-progCount[a]),progValues=progLabels.map(p=>progCount[p]);
+        const athletesPerDay={};rows.forEach(r=>{const d=r.Tanggal||'';const names=(r['Atlet yang Dilatih']||'').split(',').map(s=>s.trim()).filter(Boolean);if(!athletesPerDay[d])athletesPerDay[d]=new Set();names.forEach(n=>athletesPerDay[d].add(n));});
+        const apdKeys=Object.keys(athletesPerDay).sort(),apdLabels=apdKeys.map(d=>d.length>=10?d.substring(5,10):d),apdValues=apdKeys.map(d=>athletesPerDay[d].size);
+        const allAthletes=new Set();rows.forEach(r=>(r['Atlet yang Dilatih']||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(n=>allAthletes.add(n)));
+        document.getElementById('pval-total').textContent=rows.length;
+        document.getElementById('pval-atlet').textContent=allAthletes.size;
+        document.getElementById('pval-programs').textContent=progLabels.length;
+        document.getElementById('pval-days').textContent=[...new Set(rows.map(r=>r.Tanggal))].length;
+
+        const coachColors=['#3b82f6','#22c55e','#f97316','#a855f7','#ef4444','#eab308','#06b6d4','#ec4899'];
+        if(chartPCoach)chartPCoach.destroy();
+        chartPCoach=new Chart(document.getElementById('chart-p-coach'),{type:'bar',data:{labels:coachLabels,datasets:[{data:coachValues,backgroundColor:coachLabels.map((_,i)=>coachColors[i%coachColors.length]),borderRadius:6,maxBarThickness:40}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:baseLegend,tooltip:{...baseTooltip(),callbacks:{label:i=>`${i.raw} sesi`}}},scales:{x:{ticks:{color:CHART_TICK,font:{size:10}},grid:{color:CHART_GRID},border:{display:false}},y:{ticks:{color:CHART_TICK,font:{size:11}},grid:{display:false},border:{display:false}}}}});
+
+        if(chartPPrograms)chartPPrograms.destroy();
+        chartPPrograms=new Chart(document.getElementById('chart-p-programs'),{type:'bar',data:{labels:progLabels,datasets:[{data:progValues,backgroundColor:progLabels.map((_,i)=>coachColors[(i+2)%coachColors.length]),borderRadius:6,maxBarThickness:40}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:baseLegend,tooltip:{...baseTooltip(),callbacks:{label:i=>`${i.raw} kali`}}},scales:baseScaleOpts()}});
+
+        if(chartPAthletes)chartPAthletes.destroy();
+        chartPAthletes=new Chart(document.getElementById('chart-p-athletes'),{type:'line',data:{labels:apdLabels,datasets:[{data:apdValues,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,0.1)',fill:true,tension:0.4,borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#3b82f6'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:baseLegend,tooltip:{...baseTooltip(),callbacks:{title:i=>apdKeys[i[0].dataIndex],label:i=>`${i.raw} atlet`}}},scales:baseScaleOpts()}});
+
+        const headers=['Tanggal','Nama Pelatih','Atlet yang Dilatih','Program Latihan','Catatan Evaluasi'];
+        document.getElementById('pelatih-mini-thead').innerHTML=headers.map(h=>`<th class="px-3 py-2 text-left whitespace-nowrap font-medium">${h}</th>`).join('');
+        document.getElementById('pelatih-mini-tbody').innerHTML=rows.map(row=>'<tr class="hover:bg-white/5 transition">'+headers.map(h=>`<td class="px-3 py-2 text-gray-300 whitespace-nowrap">${row[h]||'-'}</td>`).join('')+'</tr>').join('');
+    }
+
+    // ========================================================================
+    //  RENDER MINI TABLE (ATLET)
+    // ========================================================================
+    function renderMiniTable(headers, rows, portal) {
+        const theadId = portal === 'atlet' ? 'atlet-mini-thead' : 'pelatih-mini-thead';
+        const tbodyId = portal === 'atlet' ? 'atlet-mini-tbody' : 'pelatih-mini-tbody';
+        document.getElementById(theadId).innerHTML=headers.map(h=>`<th class="px-3 py-2 text-left whitespace-nowrap font-medium">${h}</th>`).join('');
+        document.getElementById(tbodyId).innerHTML=rows.map(row=>'<tr class="hover:bg-white/5 transition">'+headers.map(h=>`<td class="px-3 py-2 text-gray-300 whitespace-nowrap">${row[h]||'-'}</td>`).join('')+'</tr>').join('');
+    }
+
+    // ========================================================================
+    //  MONEV: PHOTO PREVIEW
+    // ========================================================================
+    let monevPhotos = [];
+    function previewMonevPhotos(event) {
+        const files = Array.from(event.target.files);
+        const preview = document.getElementById('fm-foto-preview');
+        const maxFiles = 5;
+        const maxSize = 2 * 1024 * 1024;
+
+        if (monevPhotos.length + files.length > maxFiles) {
+            showToast('Maksimal 5 foto saja!', 'error');
+            return;
+        }
+
+        files.forEach(file => {
+            if (file.size > maxSize) {
+                showToast(`Foto "${file.name}" melebihi 2MB!`, 'error');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                monevPhotos.push({ name: file.name, data: e.target.result });
+                renderMonevPhotoPreview();
+            };
+            reader.readAsDataURL(file);
+        });
+        event.target.value = '';
+    }
+
+    function renderMonevPhotoPreview() {
+        const preview = document.getElementById('fm-foto-preview');
+        preview.innerHTML = monevPhotos.map((photo, i) => `
+            <div class="relative group">
+                <img src="${photo.data}" alt="${photo.name}" class="w-20 h-20 object-cover rounded-lg border border-gray-200">
+                <button onclick="removeMonevPhoto(${i})" class="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs font-bold opacity-0 group-hover:opacity-100 transition shadow">x</button>
+                <div class="text-[10px] text-gray-400 mt-0.5 text-center truncate w-20">${photo.name}</div>
+            </div>
+        `).join('');
+    }
+
+    function removeMonevPhoto(index) {
+        monevPhotos.splice(index, 1);
+        renderMonevPhotoPreview();
+    }
+
+    // ========================================================================
+    //  MONEV: SAVE ENTRY
+    // ========================================================================
+    function saveMonevEntry() {
+        const tanggal = document.getElementById('fm-tanggal').value;
+        const petugas = document.getElementById('fm-petugas').value.trim();
+        const waktu = document.getElementById('fm-waktu').value;
+        const lokasi = document.getElementById('fm-lokasi').value.trim();
+        const dipanggil = num(document.getElementById('fm-dipanggil').value);
+        const hadir = num(document.getElementById('fm-hadir').value);
+        const kedisiplinan = num(document.getElementById('fm-kedisiplinan').value);
+        const penilaian = num(document.getElementById('fm-penilaian').value);
+
+        if(!tanggal || !petugas) { showToast('Tanggal dan Nama Petugas wajib diisi!', 'error'); return; }
+        if(!waktu || !lokasi) { showToast('Waktu dan Lokasi wajib diisi!', 'error'); return; }
+        if(dipanggil <= 0 || hadir < 0) { showToast('Jumlah atlet tidak valid!', 'error'); return; }
+        if(kedisiplinan < 1 || kedisiplinan > 5) { showToast('Kedisiplinan harus 1-5!', 'error'); return; }
+        if(penilaian < 1 || penilaian > 5) { showToast('Penilaian Umum harus 1-5!', 'error'); return; }
+
+        const absenChecks = ['fm-absen-sakit','fm-absen-izin','fm-absen-tanpa','fm-absen-cedera'];
+        const alasanAbsen = absenChecks.filter(id => document.getElementById(id).checked).map(id => document.getElementById(id).parentElement.textContent.trim()).join(', ');
+
+        const fokusChecks = ['fm-fokus-fisik','fm-fokus-teknik','fm-fokus-taktik','fm-fokus-mental'];
+        const fokusLatihan = fokusChecks.filter(id => document.getElementById(id).checked).map(id => document.getElementById(id).parentElement.textContent.trim()).join(', ');
+
+        const materiChecks = ['fm-materi-dink','fm-materi-drop','fm-materi-drive','fm-materi-serve','fm-materi-footwork','fm-materi-volley','fm-materi-match'];
+        const materiSpesifik = materiChecks.filter(id => document.getElementById(id).checked).map(id => document.getElementById(id).parentElement.textContent.trim()).join(', ');
+
+        const kendalaTeknisChecks = ['fm-kendala-lapangan','fm-kendala-peralatan','fm-kendala-cuaca','fm-kendala-medik'];
+        const kendalaTeknis = kendalaTeknisChecks.filter(id => document.getElementById(id).checked).map(id => document.getElementById(id).parentElement.textContent.trim()).join(', ');
+
+        const kendalaNonTeknisChecks = ['fm-kendala-dana','fm-kendala-atlet','fm-kendala-jadwal','fm-kendala-motivasi'];
+        const kendalaNonTeknis = kendalaNonTeknisChecks.filter(id => document.getElementById(id).checked).map(id => document.getElementById(id).parentElement.textContent.trim()).join(', ');
+
+        const entry = {
+            id: generateId(),
+            Tanggal: tanggal,
+            'Nama Petugas': petugas,
+            'Waktu Kunjungan': waktu,
+            'Lokasi Latihan': lokasi,
+            'Pelatih Hadir': document.getElementById('fm-pelatih-hadir').value.trim(),
+            Cuaca: document.getElementById('fm-cuaca').value,
+            'Jumlah Dipanggil': String(dipanggil),
+            'Jumlah Hadir': String(hadir),
+            'Alasan Absen': alasanAbsen,
+            'Waktu Mulai': document.getElementById('fm-waktu-mulai').value,
+            'Kedisiplinan': String(kedisiplinan),
+            Fase: document.getElementById('fm-fase').value,
+            'Sesuai RPL': document.getElementById('fm-sesuai-rpl').value,
+            'Fokus Latihan': fokusLatihan,
+            'Materi Spesifik': materiSpesifik,
+            'Durasi Sesi': document.getElementById('fm-durasi-sesi').value,
+            'Kualitas Instruksi': document.getElementById('fm-kualitas-instruksi').value,
+            'Kondisi Garis': document.getElementById('fm-garis').value,
+            'Kondisi Permukaan': document.getElementById('fm-permukaan').value,
+            'Kondisi Net': document.getElementById('fm-net').value,
+            'Kualitas Paddle': document.getElementById('fm-paddle').value,
+            'Ketersediaan Bola': document.getElementById('fm-bola').value,
+            'Kotak P3K': document.getElementById('fm-p3k').value,
+            'Air Minum': document.getElementById('fm-air').value,
+            'Cone/Marker': document.getElementById('fm-cone').value,
+            'Kendala Teknis': kendalaTeknis,
+            'Kendala Non-Teknis': kendalaNonTeknis,
+            'Catatan Khusus': document.getElementById('fm-catatan').value.trim(),
+            'Rekomendasi': document.getElementById('fm-rekomendasi').value.trim(),
+            'Penilaian Umum': String(penilaian),
+            'Follow-up': document.getElementById('fm-followup').value,
+            'Foto': monevPhotos.map(p => p.data),
+        };
+
+        const data = getMonevData();
+        data.push(entry);
+        setMonevData(data);
+        resetMonevForm();
+        renderMonevFromStorage();
+        showToast('Laporan Monev berhasil disimpan!');
+        updateStats();
+    }
+
+    // ========================================================================
+    //  MONEV: RESET FORM
+    // ========================================================================
+    function resetMonevForm() {
+        document.getElementById('fm-tanggal').value = today();
+        document.getElementById('fm-petugas').value = '';
+        document.getElementById('fm-waktu').value = '';
+        document.getElementById('fm-lokasi').value = '';
+        document.getElementById('fm-pelatih-hadir').value = '';
+        document.getElementById('fm-cuaca').value = '';
+        document.getElementById('fm-dipanggil').value = '';
+        document.getElementById('fm-hadir').value = '';
+        ['fm-absen-sakit','fm-absen-izin','fm-absen-tanpa','fm-absen-cedera'].forEach(id => document.getElementById(id).checked = false);
+        document.getElementById('fm-waktu-mulai').value = '';
+        document.getElementById('fm-kedisiplinan').value = '';
+        document.getElementById('fm-fase').value = '';
+        document.getElementById('fm-sesuai-rpl').value = '';
+        ['fm-fokus-fisik','fm-fokus-teknik','fm-fokus-taktik','fm-fokus-mental'].forEach(id => document.getElementById(id).checked = false);
+        ['fm-materi-dink','fm-materi-drop','fm-materi-drive','fm-materi-serve','fm-materi-footwork','fm-materi-volley','fm-materi-match'].forEach(id => document.getElementById(id).checked = false);
+        document.getElementById('fm-durasi-sesi').value = '';
+        document.getElementById('fm-kualitas-instruksi').value = '';
+        document.getElementById('fm-garis').value = '';
+        document.getElementById('fm-permukaan').value = '';
+        document.getElementById('fm-net').value = '';
+        document.getElementById('fm-paddle').value = '';
+        document.getElementById('fm-bola').value = '';
+        document.getElementById('fm-p3k').value = '';
+        document.getElementById('fm-air').value = '';
+        document.getElementById('fm-cone').value = '';
+        ['fm-kendala-lapangan','fm-kendala-peralatan','fm-kendala-cuaca','fm-kendala-medik'].forEach(id => document.getElementById(id).checked = false);
+        ['fm-kendala-dana','fm-kendala-atlet','fm-kendala-jadwal','fm-kendala-motivasi'].forEach(id => document.getElementById(id).checked = false);
+        document.getElementById('fm-catatan').value = '';
+        document.getElementById('fm-rekomendasi').value = '';
+        document.getElementById('fm-penilaian').value = '';
+        document.getElementById('fm-followup').value = '';
+        monevPhotos = [];
+        renderMonevPhotoPreview();
+    }
+
+    // ========================================================================
+    //  MONEV: RENDER FROM STORAGE
+    // ========================================================================
+    function renderMonevFromStorage() {
+        const data = getMonevData();
+        applyMonevFilters();
+        if(data.length > 0) {
+            document.getElementById('monev-empty').classList.add('hidden');
+            document.getElementById('monev-charts').classList.remove('hidden');
+        } else {
+            document.getElementById('monev-empty').classList.remove('hidden');
+            document.getElementById('monev-charts').classList.add('hidden');
+        }
+    }
+
+    function applyMonevFilters() {
+        const searchTerm = (document.getElementById('search-monev-name')?.value || '').toLowerCase();
+        const fromDate = document.getElementById('search-monev-from')?.value || '';
+        const toDate = document.getElementById('search-monev-to')?.value || '';
+        let data = getMonevData();
+        if(searchTerm) data = data.filter(r => (r['Nama Petugas']||'').toLowerCase().includes(searchTerm) || (r['Lokasi Latihan']||'').toLowerCase().includes(searchTerm));
+        if(fromDate) data = data.filter(r => r.Tanggal >= fromDate);
+        if(toDate) data = data.filter(r => r.Tanggal <= toDate);
+        renderMonevCharts(data);
+    }
+
+    function resetMonevFilters() {
+        document.getElementById('search-monev-name').value = '';
+        document.getElementById('search-monev-from').value = '';
+        document.getElementById('search-monev-to').value = '';
+        applyMonevFilters();
+    }
+
+    // ========================================================================
+    //  MONEV: RENDER CHARTS
+    // ========================================================================
+    function renderMonevCharts(rows) {
+        rows.sort((a,b)=>(a.Tanggal||'').localeCompare(b.Tanggal||''));
+        if(!rows.length) {
+            document.getElementById('monev-empty').classList.remove('hidden');
+            document.getElementById('monev-charts').classList.add('hidden');
+            return;
+        }
+        document.getElementById('monev-empty').classList.add('hidden');
+        document.getElementById('monev-charts').classList.remove('hidden');
+
+        const labels = rows.map(r => r.Tanggal?.substring(5,10) || '');
+
+        const totalVisits = rows.length;
+        const avgKehadiran = rows.reduce((s,r) => {
+            const dip = num(r['Jumlah Dipanggil']), had = num(r['Jumlah Hadir']);
+            return s + (dip > 0 ? (had/dip)*100 : 0);
+        }, 0) / totalVisits;
+        const avgPenilaian = rows.reduce((s,r) => s + num(r['Penilaian Umum']), 0) / totalVisits;
+        const followupCount = rows.filter(r => (r['Follow-up']||'').includes('Ya')).length;
+
+        document.getElementById('mval-total').textContent = totalVisits;
+        document.getElementById('mval-kehadiran').textContent = avgKehadiran.toFixed(1) + '%';
+        document.getElementById('mval-penilaian').textContent = avgPenilaian.toFixed(1);
+        document.getElementById('mval-followup').textContent = followupCount;
+
+        // Chart: Penilaian Umum
+        if(chartMPenilaian) chartMPenilaian.destroy();
+        chartMPenilaian = new Chart(document.getElementById('chart-m-penilaian'), {
+            type: 'bar',
+            data: { labels, datasets: [{ label: 'Penilaian (1-5)', data: rows.map(r => num(r['Penilaian Umum'])), backgroundColor: '#f59e0b', borderRadius: 6, maxBarThickness: 32 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: baseLegend, tooltip: { ...baseTooltip(), callbacks: { title: i => rows[i[0].dataIndex].Tanggal } } }, scales: baseScaleOpts() }
+        });
+
+        // Chart: Kehadiran %
+        if(chartMKehadiran) chartMKehadiran.destroy();
+        chartMKehadiran = new Chart(document.getElementById('chart-m-kehadiran'), {
+            type: 'line',
+            data: { labels, datasets: [{ label: 'Kehadiran %', data: rows.map(r => { const d = num(r['Jumlah Dipanggil']), h = num(r['Jumlah Hadir']); return d > 0 ? Math.round((h/d)*100) : 0; }), borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 4, pointBackgroundColor: '#22c55e' }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: baseLegend, tooltip: { ...baseTooltip(), callbacks: { title: i => rows[i[0].dataIndex].Tanggal, label: i => i.raw + '%' } } }, scales: { ...baseScaleOpts(), y: { ...baseScaleOpts().y, min: 0, max: 100 } } }
+        });
+
+        // Chart: Kendala
+        const kendalaCount = {};
+        rows.forEach(r => {
+            ['Kendala Teknis', 'Kendala Non-Teknis'].forEach(key => {
+                const val = r[key] || '';
+                if(val) val.split(',').map(s => s.trim()).filter(Boolean).forEach(k => { kendalaCount[k] = (kendalaCount[k] || 0) + 1; });
+            });
+        });
+        const kLabels = Object.keys(kendalaCount).sort((a,b) => kendalaCount[b] - kendalaCount[a]);
+        const kValues = kLabels.map(k => kendalaCount[k]);
+        const kColors = ['#ef4444','#f97316','#eab308','#3b82f6','#a855f7','#ec4899','#06b6d4'];
+
+        if(chartMKendala) chartMKendala.destroy();
+        chartMKendala = new Chart(document.getElementById('chart-m-kendala'), {
+            type: 'bar',
+            data: { labels: kLabels.length ? kLabels : ['Tidak Ada'], datasets: [{ data: kValues.length ? kValues : [0], backgroundColor: kLabels.map((_,i) => kColors[i % kColors.length]), borderRadius: 6, maxBarThickness: 40 }] },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: baseLegend, tooltip: { ...baseTooltip(), callbacks: { label: i => i.raw + ' kali' } } }, scales: { x: { ticks: { color: CHART_TICK, font: { size: 10 } }, grid: { color: CHART_GRID }, border: { display: false } }, y: { ticks: { color: CHART_TICK, font: { size: 11 } }, grid: { display: false }, border: { display: false } } } }
+        });
+
+        // Mini table
+        const headers = ['Tanggal','Nama Petugas','Lokasi Latihan','Kehadiran','Penilaian Umum','Kendala','Foto'];
+        document.getElementById('monev-mini-thead').innerHTML = headers.map(h => `<th class="px-3 py-2 text-left whitespace-nowrap font-medium">${h}</th>`).join('');
+        document.getElementById('monev-mini-tbody').innerHTML = rows.map(row => {
+            const dip = num(row['Jumlah Dipanggil']), had = num(row['Jumlah Hadir']);
+            const keh = dip > 0 ? `${had}/${dip} (${Math.round((had/dip)*100)}%)` : '-';
+            const kend = [row['Kendala Teknis'], row['Kendala Non-Teknis']].filter(Boolean).join(', ') || '-';
+            return '<tr class="hover:bg-white/5 transition">' + headers.map(h => {
+                let val = '-';
+                if(h === 'Tanggal') val = row.Tanggal || '-';
+                else if(h === 'Nama Petugas') val = row['Nama Petugas'] || '-';
+                else if(h === 'Lokasi Latihan') val = row['Lokasi Latihan'] || '-';
+                else if(h === 'Kehadiran') val = keh;
+                else if(h === 'Penilaian Umum') val = row['Penilaian Umum'] || '-';
+                else if(h === 'Kendala') val = kend;
+                else if(h === 'Foto') {
+                    const fotoCount = (row['Foto'] && Array.isArray(row['Foto'])) ? row['Foto'].length : 0;
+                    val = fotoCount > 0 ? `<span class="text-amber-400">${fotoCount} foto</span>` : '-';
+                }
+                return `<td class="px-3 py-2 text-gray-300 whitespace-nowrap">${val}</td>`;
+            }).join('') + '</tr>';
+        }).join('');
+    }
+
+    // ========================================================================
+    //  MONEV: DELETE ALL
+    // ========================================================================
+    function deleteMonevAll() {
+        if(!confirm('Hapus SEMUA data monev? Tindakan ini tidak bisa dibatalkan.')) return;
+        setMonevData([]);
+        renderMonevFromStorage();
+        updateStats();
+        showToast('Semua data monev dihapus.', 'error');
+    }
+
+    // ========================================================================
+    //  MONEV: EXPORT CSV
+    // ========================================================================
+    function exportMonevCSV() {
+        const data = getMonevData();
+        if(!data.length) { showToast('Tidak ada data untuk diexport.', 'error'); return; }
+        const headers = Object.keys(data[0]).filter(k => k !== 'id');
+        const csv = [headers.join(',')].concat(data.map(row => headers.map(h => '"' + String(row[h]||'').replace(/"/g,'""') + '"').join(','))).join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'monev-koni-' + today() + '.csv';
+        link.click();
+        showToast('CSV berhasil diunduh!');
+    }
+
+    // ========================================================================
+    //  SEED DEMO DATA (jika localStorage kosong)
+    // ========================================================================
+    function seedDemoData() {
+        if(getAtletData().length === 0) {
+            const demoAtlet = [
+                {id:'d1',Tanggal:'2026-06-01','Nama Atlet':'Andi Pratama',Dink:'20',Drop:'10',Drive:'8',Serve:'15',RPE:'5','Durasi (menit)':'60','Training Load':'300',Tidur:'7','Nyeri Otot':'2',Stres:'2'},
+                {id:'d2',Tanggal:'2026-06-02','Nama Atlet':'Andi Pratama',Dink:'25',Drop:'12',Drive:'10',Serve:'18',RPE:'6','Durasi (menit)':'70','Training Load':'420',Tidur:'7','Nyeri Otot':'2',Stres:'2'},
+                {id:'d3',Tanggal:'2026-06-03','Nama Atlet':'Rina Wulandari',Dink:'30',Drop:'18',Drive:'12',Serve:'22',RPE:'6','Durasi (menit)':'75','Training Load':'450',Tidur:'8','Nyeri Otot':'1',Stres:'2'},
+                {id:'d4',Tanggal:'2026-06-04','Nama Atlet':'Budi Santoso',Dink:'22',Drop:'14',Drive:'15',Serve:'20',RPE:'7','Durasi (menit)':'80','Training Load':'560',Tidur:'6','Nyeri Otot':'3',Stres:'3'},
+                {id:'d5',Tanggal:'2026-06-05','Nama Atlet':'Andi Pratama',Dink:'35',Drop:'20',Drive:'15',Serve:'25',RPE:'7','Durasi (menit)':'85','Training Load':'595',Tidur:'8','Nyeri Otot':'2',Stres:'2'},
+                {id:'d6',Tanggal:'2026-06-06','Nama Atlet':'Sari Dewi',Dink:'40',Drop:'25',Drive:'10',Serve:'30',RPE:'5','Durasi (menit)':'60','Training Load':'300',Tidur:'9','Nyeri Otot':'1',Stres:'1'},
+                {id:'d7',Tanggal:'2026-06-07','Nama Atlet':'Rina Wulandari',Dink:'28',Drop:'16',Drive:'14',Serve:'20',RPE:'6','Durasi (menit)':'70','Training Load':'420',Tidur:'7','Nyeri Otot':'2',Stres:'3'},
+                {id:'d8',Tanggal:'2026-06-08','Nama Atlet':'Andi Pratama',Dink:'32',Drop:'22',Drive:'18',Serve:'28',RPE:'8','Durasi (menit)':'90','Training Load':'720',Tidur:'7','Nyeri Otot':'3',Stres:'2'},
+                {id:'d9',Tanggal:'2026-06-09','Nama Atlet':'Budi Santoso',Dink:'25',Drop:'15',Drive:'20',Serve:'22',RPE:'8','Durasi (menit)':'95','Training Load':'760',Tidur:'6','Nyeri Otot':'4',Stres:'4'},
+                {id:'d10',Tanggal:'2026-06-10','Nama Atlet':'Andi Pratama',Dink:'15',Drop:'8',Drive:'5',Serve:'10',RPE:'4','Durasi (menit)':'45','Training Load':'180',Tidur:'9','Nyeri Otot':'1',Stres:'1'},
+                {id:'d11',Tanggal:'2026-06-11','Nama Atlet':'Rina Wulandari',Dink:'35',Drop:'22',Drive:'16',Serve:'28',RPE:'7','Durasi (menit)':'85','Training Load':'595',Tidur:'7','Nyeri Otot':'2',Stres:'2'},
+                {id:'d12',Tanggal:'2026-06-12','Nama Atlet':'Sari Dewi',Dink:'38',Drop:'24',Drive:'12',Serve:'32',RPE:'6','Durasi (menit)':'75','Training Load':'450',Tidur:'8','Nyeri Otot':'1',Stres:'2'},
+                {id:'d13',Tanggal:'2026-06-13','Nama Atlet':'Andi Pratama',Dink:'40',Drop:'28',Drive:'20',Serve:'30',RPE:'8','Durasi (menit)':'100','Training Load':'800',Tidur:'7','Nyeri Otot':'3',Stres:'3'},
+                {id:'d14',Tanggal:'2026-06-14','Nama Atlet':'Budi Santoso',Dink:'30',Drop:'18',Drive:'22',Serve:'25',RPE:'9','Durasi (menit)':'110','Training Load':'990',Tidur:'5','Nyeri Otot':'5',Stres:'5'},
+                {id:'d15',Tanggal:'2026-06-15','Nama Atlet':'Andi Pratama',Dink:'18',Drop:'10',Drive:'8',Serve:'12',RPE:'3','Durasi (menit)':'40','Training Load':'120',Tidur:'9','Nyeri Otot':'1',Stres:'1'},
+                {id:'d16',Tanggal:'2026-06-16','Nama Atlet':'Rina Wulandari',Dink:'32',Drop:'20',Drive:'18',Serve:'26',RPE:'7','Durasi (menit)':'80','Training Load':'560',Tidur:'7','Nyeri Otot':'2',Stres:'2'},
+                {id:'d17',Tanggal:'2026-06-17','Nama Atlet':'Andi Pratama',Dink:'38',Drop:'25',Drive:'22',Serve:'30',RPE:'8','Durasi (menit)':'95','Training Load':'760',Tidur:'7','Nyeri Otot':'3',Stres:'3'},
+                {id:'d18',Tanggal:'2026-06-18','Nama Atlet':'Sari Dewi',Dink:'42',Drop:'28',Drive:'14',Serve:'35',RPE:'6','Durasi (menit)':'80','Training Load':'480',Tidur:'8','Nyeri Otot':'2',Stres:'1'},
+                {id:'d19',Tanggal:'2026-06-19','Nama Atlet':'Budi Santoso',Dink:'28',Drop:'16',Drive:'20',Serve:'22',RPE:'7','Durasi (menit)':'85','Training Load':'595',Tidur:'6','Nyeri Otot':'3',Stres:'3'},
+                {id:'d20',Tanggal:'2026-06-20','Nama Atlet':'Andi Pratama',Dink:'35',Drop:'22',Drive:'18',Serve:'28',RPE:'7','Durasi (menit)':'90','Training Load':'630',Tidur:'8','Nyeri Otot':'2',Stres:'2'},
+                {id:'d21',Tanggal:'2026-06-21','Nama Atlet':'Rina Wulandari',Dink:'40',Drop:'25',Drive:'20',Serve:'30',RPE:'6','Durasi (menit)':'75','Training Load':'450',Tidur:'7','Nyeri Otot':'2',Stres:'3'},
+                {id:'d22',Tanggal:'2026-06-22','Nama Atlet':'Andi Pratama',Dink:'45',Drop:'30',Drive:'22',Serve:'35',RPE:'8','Durasi (menit)':'100','Training Load':'800',Tidur:'8','Nyeri Otot':'2',Stres:'2'},
+            ];
+            setAtletData(demoAtlet);
+        }
+        if(getPelatihData().length === 0) {
+            const demoPelatih = [
+                {id:'p1',Tanggal:'2026-06-01','Nama Pelatih':'Coach Hendra','Atlet yang Dilatih':'Andi, Rina, Budi','Program Latihan':'Drill Dink & Drop','Catatan Evaluasi':'Fokus net shot, Andi improving'},
+                {id:'p2',Tanggal:'2026-06-02','Nama Pelatih':'Coach Maya','Atlet yang Dilatih':'Sari, Rina','Program Latihan':'Conditioning & Serve','Catatan Evaluasi':'Rina power serve kurang'},
+                {id:'p3',Tanggal:'2026-06-03','Nama Pelatih':'Coach Hendra','Atlet yang Dilatih':'Andi, Budi, Sari','Program Latihan':'Match Simulation','Catatan Evaluasi':'Progress baik semua atlet'},
+                {id:'p4',Tanggal:'2026-06-04','Nama Pelatih':'Coach Tono','Atlet yang Dilatih':'Andi, Rina','Program Latihan':'Footwork & Agility','Catatan Evaluasi':'Rina perlu latihan kaki lebih cepat'},
+                {id:'p5',Tanggal:'2026-06-05','Nama Pelatih':'Coach Maya','Atlet yang Dilatih':'Budi, Sari, Rina','Program Latihan':'Drill Dink & Drop','Catatan Evaluasi':'Budi konsisten di dink'},
+                {id:'p6',Tanggal:'2026-06-06','Nama Pelatih':'Coach Hendra','Atlet yang Dilatih':'Andi, Budi','Program Latihan':'Power Drive','Catatan Evaluasi':'Andi drive makin kuat'},
+                {id:'p7',Tanggal:'2026-06-07','Nama Pelatih':'Coach Tono','Atlet yang Dilatih':'Rina, Sari, Andi','Program Latihan':'Match Simulation','Catatan Evaluasi':'Semua atlet showing progress'},
+                {id:'p8',Tanggal:'2026-06-08','Nama Pelatih':'Coach Hendra','Atlet yang Dilatih':'Andi, Rina, Budi, Sari','Program Latihan':'Conditioning & Serve','Catatan Evaluasi':'Sari serve improved, Budi needs work'},
+                {id:'p9',Tanggal:'2026-06-09','Nama Pelatih':'Coach Maya','Atlet yang Dilatih':'Andi, Rina','Program Latihan':'Footwork & Agility','Catatan Evaluasi':'Andi agility terbaik'},
+                {id:'p10',Tanggal:'2026-06-10','Nama Pelatih':'Coach Hendra','Atlet yang Dilatih':'Budi, Sari','Program Latihan':'Drill Dink & Drop','Catatan Evaluasi':'Sari net shot improving fast'},
+                {id:'p11',Tanggal:'2026-06-11','Nama Pelatih':'Coach Tono','Atlet yang Dilatih':'Andi, Rina, Budi','Program Latihan':'Power Drive','Catatan Evaluasi':'Rina power meningkat signifikan'},
+                {id:'p12',Tanggal:'2026-06-12','Nama Pelatih':'Coach Maya','Atlet yang Dilatih':'Sari, Rina, Andi','Program Latihan':'Match Simulation','Catatan Evaluasi':'Pertandingan simulasi berjalan baik'},
+                {id:'p13',Tanggal:'2026-06-13','Nama Pelatih':'Coach Hendra','Atlet yang Dilatih':'Andi, Budi, Sari','Program Latihan':'Conditioning & Serve','Catatan Evaluasi':'Budi serve mulai konsisten'},
+                {id:'p14',Tanggal:'2026-06-14','Nama Pelatih':'Coach Tono','Atlet yang Dilatih':'Rina, Andi','Program Latihan':'Footwork & Agility','Catatan Evaluasi':'Rina kecepatan sudah oke'},
+                {id:'p15',Tanggal:'2026-06-15','Nama Pelatih':'Coach Maya','Atlet yang Dilatih':'Budi, Sari','Program Latihan':'Drill Dink & Drop','Catatan Evaluasi':'Sari dink precision naik'},
+                {id:'p16',Tanggal:'2026-06-16','Nama Pelatih':'Coach Hendra','Atlet yang Dilatih':'Andi, Rina, Budi, Sari','Program Latihan':'Power Drive','Catatan Evaluasi':'Semua power drive meningkat'},
+                {id:'p17',Tanggal:'2026-06-17','Nama Pelatih':'Coach Tono','Atlet yang Dilatih':'Andi, Rina','Program Latihan':'Match Simulation','Catatan Evaluasi':'Andi menang 3-0 di simulasi'},
+                {id:'p18',Tanggal:'2026-06-18','Nama Pelatih':'Coach Maya','Atlet yang Dilatih':'Sari, Budi, Rina','Program Latihan':'Conditioning & Serve','Catatan Evaluasi':'Rina serve konsisten 80%'},
+                {id:'p19',Tanggal:'2026-06-19','Nama Pelatih':'Coach Hendra','Atlet yang Dilatih':'Andi, Budi','Program Latihan':'Footwork & Agility','Catatan Evaluasi':'Budi agility improve 20%'},
+                {id:'p20',Tanggal:'2026-06-20','Nama Pelatih':'Coach Tono','Atlet yang Dilatih':'Andi, Rina, Sari','Program Latihan':'Drill Dink & Drop','Catatan Evaluasi':'Sari ready for tournament'},
+                {id:'p21',Tanggal:'2026-06-21','Nama Pelatih':'Coach Maya','Atlet yang Dilatih':'Budi, Rina, Andi','Program Latihan':'Power Drive','Catatan Evaluasi':'Final session, all atlets peak'},
+                {id:'p22',Tanggal:'2026-06-22','Nama Pelatih':'Coach Hendra','Atlet yang Dilatih':'Andi, Rina, Budi, Sari','Program Latihan':'Match Simulation','Catatan Evaluasi':'Tournament preparation complete'},
+            ];
+            setPelatihData(demoPelatih);
+        }
+        if(getMonevData().length === 0) {
+            const demoMonev = [
+                {id:'m1',Tanggal:'2026-06-03','Nama Petugas':'Dr. Suharto','Waktu Kunjungan':'Sesi Pagi (06-10)','Lokasi Latihan':'GOR Pandegiling','Pelatih Hadir':'Coach Hendra, Coach Maya','Cuaca':'Cerah','Jumlah Dipanggil':'12','Jumlah Hadir':'10','Alasan Absen':'Sakit, Izin','Waktu Mulai':'06:30','Kedisiplinan':'4','Fase':'Persiapan Khusus','Sesuai RPL':'Sesuai sepenuhnya','Fokus Latihan':'Fisik, Teknik','Materi Spesifik':'Dink, Drop, Footwork','Durasi Sesi':'90','Kualitas Instruksi':'4','RPE':'6','Durasi Aktif':'75','Training Load':'450','Kelelahan':'3','Fokus Atlet':'4','Warmup':'Ya, terstruktur','Cooldown':'Ya, terstruktur','Kondisi Garis':'4','Kondisi Permukaan':'4','Kondisi Net':'5','Kualitas Paddle':'4','Ketersediaan Bola':'Sangat Cukup (>10)','Kotak P3K':'Ada & Lengkap','Air Minum':'Cukup','Cone/Marker':'Tersedia & Digunakan','Kendala Teknis':'','Kendala Non-Teknis':'','Catatan Khusus':'Latihan berjalan lancar. Kualitas dink rally meningkat.','Rekomendasi':'Pertahankan frekuensi latihan teknik net play.','Penilaian Umum':'4','Follow-up':'Tidak perlu'},
+                {id:'m2',Tanggal:'2026-06-07','Nama Petugas':'Dr. Suharto','Waktu Kunjungan':'Sesi Sore (14-18)','Lokasi Latihan':'GOR Pandegiling','Pelatih Hadir':'Coach Hendra','Cuaca':'Berawan','Jumlah Dipanggil':'12','Jumlah Hadir':'11','Alasan Absen':'Izin','Waktu Mulai':'14:15','Kedisiplinan':'3','Fase':'Persiapan Khusus','Sesuai RPL':'Sebagian besar sesuai','Fokus Latihan':'Teknik, Taktik','Materi Spesifik':'Drive, Serve, Match Simulation','Durasi Sesi':'80','Kualitas Instruksi':'4','RPE':'7','Durasi Aktif':'70','Training Load':'490','Kelelahan':'3','Fokus Atlet':'4','Warmup':'Ya, terstruktur','Cooldown':'Ya, terstruktur','Kondisi Garis':'4','Kondisi Permukaan':'3','Kondisi Net':'4','Kualitas Paddle':'3','Ketersediaan Bola':'Cukup (5-10)','Kotak P3K':'Ada & Lengkap','Air Minum':'Cukup','Cone/Marker':'Tersedia, Tidak Digunakan','Kendala Teknis':'Lapangan, Peralatan','Kendala Non-Teknis':'','Catatan Khusus':'Permukaan lapangan sedikit licin karena lembab. Beberapa paddle sudah aus.','Rekomendasi':'Perlu penggantian paddle dan perbaikan drainage lapangan.','Penilaian Umum':'3','Follow-up':'Ya, bulan depan'},
+                {id:'m3',Tanggal:'2026-06-12','Nama Petugas':'Rina Kartika','Waktu Kunjungan':'Sesi Pagi (06-10)','Lokasi Latihan':'Lapangan Taman Bungkul','Pelatih Hadir':'Coach Tono, Coach Maya','Cuaca':'Cerah','Jumlah Dipanggil':'10','Jumlah Hadir':'8','Alasan Absen':'Cedera, Tanpa Keterangan','Waktu Mulai':'06:00','Kedisiplinan':'3','Fase':'Pra-Kompetisi','Sesuai RPL':'Sesuai sepenuhnya','Fokus Latihan':'Fisik, Mental','Materi Spesifik':'Footwork, Match Simulation','Durasi Sesi':'100','Kualitas Instruksi':'5','RPE':'8','Durasi Aktif':'90','Training Load':'720','Kelelahan':'4','Fokus Atlet':'3','Warmup':'Ya, terstruktur','Cooldown':'Tidak ada','Kondisi Garis':'3','Kondisi Permukaan':'4','Kondisi Net':'4','Kualitas Paddle':'4','Ketersediaan Bola':'Cukup (5-10)','Kotak P3K':'Ada, Tidak Lengkap','Air Minum':'Terbatas','Cone/Marker':'Tersedia & Digunakan','Kendala Teknis':'Medik','Kendala Non-Teknis':'Jumlah Atlet','Catatan Khusus':'1 atlet cedera pergelangan kaki saat footwork. Tidak ada cool-down terstruktur.','Rekomendasi':'Sediakan kotak P3K lengkap dan pastikan cool-down selalu dilakukan.','Penilaian Umum':'3','Follow-up':'Ya, segera (1-2 minggu)'},
+                {id:'m4',Tanggal:'2026-06-15','Nama Petugas':'Rina Kartika','Waktu Kunjungan':'Sesi Sore (14-18)','Lokasi Latihan':'GOR Pandegiling','Pelatih Hadir':'Coach Hendra','Cuaca':'Hujan Ringan','Jumlah Dipanggil':'12','Jumlah Hadir':'12','Alasan Absen':'','Waktu Mulai':'14:00','Kedisiplinan':'5','Fase':'Pra-Kompetisi','Sesuai RPL':'Sesuai sepenuhnya','Fokus Latihan':'Teknik, Taktik','Materi Spesifik':'Dink, Drop, Serve, Volley','Durasi Sesi':'90','Kualitas Instruksi':'5','RPE':'7','Durasi Aktif':'80','Training Load':'560','Kelelahan':'3','Fokus Atlet':'5','Warmup':'Ya, terstruktur','Cooldown':'Ya, terstruktur','Kondisi Garis':'4','Kondisi Permukaan':'4','Kondisi Net':'5','Kualitas Paddle':'5','Ketersediaan Bola':'Sangat Cukup (>10)','Kotak P3K':'Ada & Lengkap','Air Minum':'Cukup','Cone/Marker':'Tersedia & Digunakan','Kendala Teknis':'','Kendala Non-Teknis':'','Catatan Khusus':'Sesi latihan terbaik bulan ini. Semua atlet hadir 100%. Kualitas drill sangat baik.','Rekomendasi':'Pertahankan standar latihan ini. Siapkan untuk turnamen regional.','Penilaian Umum':'5','Follow-up':'Tidak perlu'},
+                {id:'m5',Tanggal:'2026-06-20','Nama Petugas':'Dr. Suharto','Waktu Kunjungan':'Sesi Pagi (06-10)','Lokasi Latihan':'GOR Pandegiling','Pelatih Hadir':'Coach Hendra, Coach Tono','Cuaca':'Panas Terik','Jumlah Dipanggil':'12','Jumlah Hadir':'9','Alasan Absen':'Sakit, Cedera','Waktu Mulai':'06:45','Kedisiplinan':'3','Fase':'Kompetisi','Sesuai RPL':'Sedikit sesuai','Fokus Latihan':'Teknik','Materi Spesifik':'Serve, Return','Durasi Sesi':'70','Kualitas Instruksi':'3','RPE':'5','Durasi Aktif':'55','Training Load':'275','Kelelahan':'2','Fokus Atlet':'3','Warmup':'Ya, tidak terstruktur','Cooldown':'Tidak ada','Kondisi Garis':'3','Kondisi Permukaan':'3','Kondisi Net':'3','Kualitas Paddle':'3','Ketersediaan Bola':'Kurang (<5)','Kotak P3K':'Tidak Ada','Air Minum':'Terbatas','Cone/Marker':'Tidak Tersedia','Kendala Teknis':'Peralatan, Cuaca','Kendala Non-Teknis':'Dana','Catatan Khusus':'Cuaca panas menghambat intensitas. Bola tersisa hanya 3. 2 atlet absen karena sakit dan cedera.','Rekomendasi':'Segera penuhi stok bola dan sediakan P3K. Pertahankan jadwal pagi saat cuaca lebih dingin.','Penilaian Umum':'2','Follow-up':'Ya, segera (1-2 minggu)'},
+            ];
+            setMonevData(demoMonev);
+        }
+    }
+
+    // ========================================================================
+    //  AUTH: GET CURRENT USER SESSION
+    // ========================================================================
+    function getCurrentUser() {
+        try {
+            const session = sessionStorage.getItem('pb_session');
+            return session ? JSON.parse(session) : null;
+        } catch(e) {
+            return null;
+        }
+    }
+
+    // ====================================================================
+    //  AUTH: LOGOUT
+    // ====================================================================
+    function handleLogout() {
+        sessionStorage.removeItem('pb_session');
+        window.location.href = 'login.html';
+    }
+
+    // ====================================================================
+    //  AUTH: APPLY ROLE-BASED ACCESS CONTROL
+    // ====================================================================
+    function applyRoleAccess() {
+        const user = getCurrentUser();
+        if (!user) return;
+
+        const role = user.role;
+
+        // Show user info in navbar
+        document.getElementById('user-display-name').textContent = user.displayName || user.username;
+        const roleLabels = { admin: 'Tim Monev', coach: 'Pelatih', athlete: 'Atlet' };
+        document.getElementById('user-display-role').textContent = roleLabels[role] || role;
+
+        // === WELCOME BADGES ===
+        document.getElementById('welcome-badge-admin').classList.add('hidden');
+        document.getElementById('welcome-badge-atlet').classList.add('hidden');
+        document.getElementById('welcome-badge-pelatih').classList.add('hidden');
+        if (role === 'admin') document.getElementById('welcome-badge-admin').classList.remove('hidden');
+        else if (role === 'athlete') document.getElementById('welcome-badge-atlet').classList.remove('hidden');
+        else if (role === 'coach') document.getElementById('welcome-badge-pelatih').classList.remove('hidden');
+
+        // === BERANDA CARDS ===
+        const cardAtlet = document.getElementById('card-portal-atlet');
+        const cardPelatih = document.getElementById('card-portal-pelatih');
+        const cardMonev = document.getElementById('card-monev');
+
+        // Hide all portal cards by default
+        if (cardAtlet) cardAtlet.classList.add('hidden');
+        if (cardPelatih) cardPelatih.classList.add('hidden');
+        if (cardMonev) cardMonev.classList.add('hidden');
+
+        if (role === 'admin') {
+            if (cardAtlet) cardAtlet.classList.remove('hidden');
+            if (cardPelatih) cardPelatih.classList.remove('hidden');
+            if (cardMonev) cardMonev.classList.remove('hidden');
+        } else if (role === 'coach') {
+            if (cardPelatih) cardPelatih.classList.remove('hidden');
+        } else if (role === 'athlete') {
+            if (cardAtlet) cardAtlet.classList.remove('hidden');
+        }
+
+        // === BERANDA STAT CARDS ===
+        const statCardAtlet = document.getElementById('stat-card-atlet');
+        const statCardPelatih = document.getElementById('stat-card-pelatih');
+        const statCardMonev = document.getElementById('stat-card-monev');
+
+        if (statCardAtlet) statCardAtlet.classList.add('hidden');
+        if (statCardPelatih) statCardPelatih.classList.add('hidden');
+        if (statCardMonev) statCardMonev.classList.add('hidden');
+
+        if (role === 'admin') {
+            if (statCardAtlet) statCardAtlet.classList.remove('hidden');
+            if (statCardPelatih) statCardPelatih.classList.remove('hidden');
+            if (statCardMonev) statCardMonev.classList.remove('hidden');
+        } else if (role === 'coach') {
+            if (statCardPelatih) statCardPelatih.classList.remove('hidden');
+        } else if (role === 'athlete') {
+            if (statCardAtlet) statCardAtlet.classList.remove('hidden');
+        }
+
+        // === HIDE INPUT FORMS & BUTTONS FOR ADMIN (read-only view) ===
+        if (role === 'admin') {
+            const atletForm = document.getElementById('atlet-form-section');
+            const atletResults = document.getElementById('atlet-results-section');
+            const pelatihForm = document.getElementById('pelatih-form-section');
+            const pelatihResults = document.getElementById('pelatih-results-section');
+            const btnAtletForm = document.getElementById('btn-atlet-form');
+            const btnPelatihForm = document.getElementById('btn-pelatih-form');
+            if (atletForm) atletForm.classList.add('hidden');
+            if (atletResults) atletResults.classList.remove('hidden');
+            if (pelatihForm) pelatihForm.classList.add('hidden');
+            if (pelatihResults) pelatihResults.classList.remove('hidden');
+            if (btnAtletForm) btnAtletForm.classList.add('hidden');
+            if (btnPelatihForm) btnPelatihForm.classList.add('hidden');
+        }
+
+        // === RESTRICT PAGE ACCESS ===
+        const restrictedPages = {
+            'atlet': ['admin', 'athlete'],
+            'pelatih': ['admin', 'coach'],
+            'monev': ['admin']
+        };
+
+        const originalShowPage = window.showPage;
+        window.showPage = function(page) {
+            if (restrictedPages[page] && !restrictedPages[page].includes(role)) {
+                showToast('Anda tidak memiliki akses ke halaman ini.', 'error');
+                return;
+            }
+            originalShowPage(page);
+        };
+
+        if (role !== 'admin') {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page-beranda').classList.add('active');
+        }
+    }
+
+    // ========================================================================
+    //  INISIALISASI
+    // ========================================================================
+    document.addEventListener('DOMContentLoaded', function() {
+        applyRoleAccess();
+        document.getElementById('f-atlet-tanggal').value = today();
+        document.getElementById('f-pelatih-tanggal').value = today();
+        document.getElementById('fm-tanggal').value = today();
+        seedDemoData();
+        updateStats();
+    });
+    </script>
+</body>
+</html>
